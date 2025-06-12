@@ -1,4 +1,4 @@
-# ui_components.py
+# ui_components.py - 設定ファイル対応版
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,10 +7,19 @@ import json
 from datetime import datetime, date
 from score_extractor import MahjongScoreExtractor
 from spreadsheet_manager import SpreadsheetManager
+from config_manager import ConfigManager
 
 def setup_sidebar():
-    """サイドバーの設定 - シンプルなデザイン"""
+    """サイドバーの設定"""
     st.sidebar.title("設定")
+    
+    # 設定マネージャーの初期化
+    config_manager = ConfigManager()
+    
+    # 設定状況の表示
+    display_config_status(config_manager)
+    
+    st.sidebar.divider()
     
     # データ管理セクション
     st.sidebar.subheader("データ管理")
@@ -39,75 +48,251 @@ def setup_sidebar():
         )
     else:
         st.sidebar.info("記録なし")
+
+def display_config_status(config_manager: ConfigManager):
+    """設定状況を表示"""
+    st.sidebar.subheader("API設定状況")
     
-    # Google Sheets連携
-    st.sidebar.subheader("Google Sheets連携")
+    status = config_manager.get_config_status()
     
-    with st.sidebar.expander("設定"):
-        credentials_file = st.file_uploader(
-            "認証情報ファイル", 
-            type=['json']
-        )
+    # OpenAI API
+    if status['openai_api_key']:
+        st.sidebar.success("OpenAI API設定済み")
+    else:
+        st.sidebar.error("OpenAI API未設定")
+    
+    # Vision API
+    if status['vision_credentials']:
+        auth_type = status['vision_auth_type']
+        if auth_type == "api_key":
+            st.sidebar.success("Vision API設定済み（APIキー）")
+        elif auth_type == "json_file":
+            st.sidebar.success("Vision API設定済み（JSONファイル）")
+        else:
+            st.sidebar.error("Vision API未設定")
+    else:
+        st.sidebar.error("Vision API未設定")
+    
+    # Google Sheets & シーズン管理
+    st.sidebar.subheader("Google Sheets & シーズン")
+    
+    # 認証情報とシーズン設定の確認
+    has_sheets_auth = status['sheets_credentials']
+    has_seasons = status['season_count'] > 0
+    has_current_season_id = status['spreadsheet_id']
+    
+    if has_sheets_auth and has_seasons and has_current_season_id:
+        current_season = status['current_season']
+        season_count = status['season_count']
+        st.sidebar.success(f"現在: {current_season} ({season_count}シーズン)")
         
-        spreadsheet_id = st.text_input(
-            "スプレッドシートID",
-            placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-        )
+        # シーズン選択
+        seasons = status['seasons']
+        if len(seasons) > 1:
+            season_options = {key: info.get('name', key) for key, info in seasons.items()}
+            selected_season = st.sidebar.selectbox(
+                "シーズン選択",
+                options=list(season_options.keys()),
+                format_func=lambda x: season_options[x],
+                index=list(season_options.keys()).index(current_season) if current_season in season_options else 0
+            )
+            
+            if selected_season != current_season:
+                if st.sidebar.button("シーズン変更"):
+                    if config_manager.set_current_season(selected_season):
+                        st.sidebar.success(f"{selected_season}に変更しました")
+                        st.rerun()
         
-        if credentials_file and spreadsheet_id:
-            try:
-                credentials_dict = json.load(credentials_file)
-                st.session_state['credentials'] = credentials_dict
-                st.session_state['spreadsheet_id'] = spreadsheet_id
-                st.success("設定完了")
-            except Exception as e:
-                st.error(f"設定エラー: {e}")
+        # 現在のシーズン情報表示
+        current_season_info = config_manager.get_season_info(current_season)
+        if current_season_info:
+            st.sidebar.caption(f"名前: {current_season_info.get('name', '')}")
+            st.sidebar.caption(f"ID: {current_season_info.get('spreadsheet_id', '')}")
+    
+    elif has_sheets_auth and has_seasons:
+        st.sidebar.warning("Sheets認証OK、現在のシーズンにスプレッドシートIDなし")
+    elif has_sheets_auth:
+        st.sidebar.warning("Sheets認証OK、シーズン未設定")
+    elif has_seasons:
+        st.sidebar.warning("シーズン設定あり、Sheets認証なし")
+    else:
+        st.sidebar.error("Google Sheets未設定")
+    
+    # シーズン管理（認証の有無に関わらず表示）
+    with st.sidebar.expander("シーズン管理"):
+        if not has_sheets_auth:
+            st.warning("Google Sheets認証ファイルが必要です")
+            st.info("config.jsonでcredentials_fileを設定するか、Vision APIのJSONファイルを共用してください")
+        
+        # 新しいシーズン追加
+        st.subheader("新シーズン追加")
+        
+        with st.form("add_season_form"):
+            new_season_key = st.text_input("シーズンキー", placeholder="season2")
+            new_season_name = st.text_input("シーズン名", placeholder="mahjong-score-tracker season2")
+            
+            # 作成方法選択
+            creation_method = st.radio(
+                "作成方法",
+                ["自動作成", "既存URLを指定"],
+                help="自動作成では新しいスプレッドシートを作成します"
+            )
+            
+            new_season_url = ""
+            if creation_method == "既存URLを指定":
+                new_season_url = st.text_input("スプレッドシートURL", placeholder="https://docs.google.com/spreadsheets/d/...")
+            
+            if st.form_submit_button("シーズン追加"):
+                if new_season_key and new_season_name:
+                    if creation_method == "自動作成":
+                        if config_manager.add_season(new_season_key, new_season_name, auto_create=True):
+                            st.success(f"シーズン '{new_season_key}' を自動作成しました")
+                            st.rerun()
+                    else:
+                        if new_season_url:
+                            if config_manager.add_season(new_season_key, new_season_name, new_season_url):
+                                st.success(f"シーズン '{new_season_key}' を追加しました")
+                                st.rerun()
+                        else:
+                            st.error("スプレッドシートURLを入力してください")
+                else:
+                    st.error("シーズンキーと名前を入力してください")
+        
+        # 既存シーズン一覧
+        if has_seasons:
+            st.subheader("登録済みシーズン")
+            seasons = status['seasons']
+            for key, info in seasons.items():
+                is_current = (key == status['current_season'])
+                marker = " (現在)" if is_current else ""
+                with st.container():
+                    st.caption(f"• {info.get('name', key)}{marker}")
+                    if st.button(f"🔗", key=f"open_{key}", help="スプレッドシートを開く"):
+                        st.write(f"URL: {info.get('url', '')}")
+        else:
+            st.info("まだシーズンが登録されていません")
+    
+    # 設定ファイル管理
+    with st.sidebar.expander("設定ファイル管理"):
+        if st.button("設定テンプレート作成", use_container_width=True):
+            from config_manager import create_config_template
+            template_file = create_config_template()
+            if template_file:
+                st.success(f"{template_file}を作成しました")
+        
+        st.info("config.jsonファイルを編集してAPIキーを設定してください")
+        st.caption("Vision APIはAPIキーまたはJSONファイルで認証できます")
 
 def extract_data_from_image(image):
-    """画像からニックネームと点数を抽出"""
-    with st.spinner("解析中..."):
-        extractor = MahjongScoreExtractor()
-        image_array = np.array(image)
-        result = extractor.analyze_image(image_array)
-        st.session_state['analysis_result'] = result
+    """画像からデータを抽出"""
+    # 設定マネージャーから認証情報を取得
+    config_manager = ConfigManager()
+    
+    # API認証情報の確認
+    openai_key = config_manager.get_openai_api_key()
+    vision_creds = config_manager.load_vision_credentials()
+    
+    if not openai_key:
+        st.error("OpenAI API Keyが設定されていません。config.jsonファイルを確認してください。")
+        return
+    
+    if not vision_creds:
+        st.error("Google Vision APIの認証情報が設定されていません。認証ファイルを確認してください。")
+        return
+    
+    with st.spinner("AI解析中..."):
+        try:
+            extractor = MahjongScoreExtractor(
+                vision_credentials=vision_creds,
+                openai_api_key=openai_key
+            )
+            
+            image_array = np.array(image)
+            result = extractor.analyze_image(image_array)
+            
+            st.session_state['analysis_result'] = result
+            
+        except Exception as e:
+            st.error(f"解析エラー: {e}")
+            st.session_state['analysis_result'] = {
+                'success': False,
+                'message': f'エラー: {str(e)}',
+                'players': [
+                    {'nickname': '', 'score': 25000},
+                    {'nickname': '', 'score': 25000},
+                    {'nickname': '', 'score': 25000},
+                    {'nickname': '', 'score': 25000}
+                ],
+                'extracted_text': '',
+                'confidence': 0.0
+            }
 
 def display_extraction_results():
-    """抽出結果をシンプルに表示"""
+    """解析結果の表示"""
     result = st.session_state['analysis_result']
     
-    # 成功メッセージ
-    st.success("データ抽出完了")
+    if not result.get('success', False):
+        st.error(result.get('message', '解析に失敗しました'))
+        return
     
-    # 結果を2列で表示
-    col1, col2 = st.columns(2)
+    # 成功メッセージと信頼度
+    confidence = result.get('confidence', 0.0)
+    st.success("解析完了")
+    st.write(f"信頼度: {confidence:.0%}")
     
-    with col1:
-        st.subheader("抽出されたニックネーム")
-        nicknames = result['nicknames']
-        if nicknames:
-            for nickname in nicknames:
-                st.text(nickname)
+    # 解析されたプレイヤー情報
+    players = result.get('players', [])
+    
+    if any(player.get('nickname', '').strip() for player in players):
+        st.subheader("抽出されたプレイヤー情報")
+        
+        # テーブル形式で表示
+        player_data = []
+        for i, player in enumerate(players):
+            nickname = player.get('nickname', '')
+            score = player.get('score', 25000)
+            
+            if nickname.strip():
+                player_data.append({
+                    'プレイヤー': f"Player {i+1}",
+                    'ニックネーム': nickname,
+                    '点数': f"{score:,}点"
+                })
+        
+        if player_data:
+            player_df = pd.DataFrame(player_data)
+            st.dataframe(player_df, use_container_width=True, hide_index=True)
         else:
-            st.warning("ニックネームが見つかりませんでした")
+            st.warning("有効なプレイヤー情報が抽出できませんでした")
+    else:
+        st.warning("プレイヤー情報が抽出できませんでした")
     
-    with col2:
-        st.subheader("抽出された点数")
-        scores = result['scores']
-        if scores:
-            for score in scores:
-                st.text(f"{score:,}点")
-        else:
-            st.warning("点数が見つかりませんでした")
+    # 注意事項があれば表示
+    notes = result.get('notes', '')
+    if notes:
+        st.info(f"解析メモ: {notes}")
     
     # 詳細は折りたたみで表示
     with st.expander("抽出テキスト詳細"):
-        st.text(result['extracted_text'])
+        extracted_text = result.get('extracted_text', '')
+        if extracted_text:
+            st.text(extracted_text)
+        else:
+            st.info("テキストが抽出されませんでした")
 
 def create_extraction_form():
-    """抽出データの確認・修正フォーム - シンプルデザイン"""
+    """抽出データの確認・修正フォーム"""
     result = st.session_state['analysis_result']
-    nicknames = result.get('nicknames', [])
-    scores = result.get('scores', [])
+    
+    if not result.get('success', False):
+        st.warning("解析結果がありません")
+        return
+    
+    players = result.get('players', [])
+    
+    # プレイヤーデータが不足している場合は空のデータで埋める
+    while len(players) < 4:
+        players.append({'nickname': '', 'score': 25000})
     
     st.subheader("データ確認・修正")
     
@@ -119,26 +304,82 @@ def create_extraction_form():
         
         with col1:
             st.caption("プレイヤー1")
-            name1 = st.text_input("名前", value=nicknames[0] if len(nicknames) > 0 else "", key="name1", label_visibility="collapsed")
-            score1 = st.number_input("点数", value=scores[0] if len(scores) > 0 else 25000, key="score1", label_visibility="collapsed")
+            name1 = st.text_input(
+                "名前", 
+                value=players[0].get('nickname', ''), 
+                key="name1", 
+                label_visibility="collapsed",
+                placeholder="ニックネーム"
+            )
+            score1 = st.number_input(
+                "点数", 
+                value=int(players[0].get('score', 25000)), 
+                min_value=-100000,
+                max_value=200000,
+                step=100,
+                key="score1", 
+                label_visibility="collapsed"
+            )
             players_data.append({"name": name1, "score": score1})
         
         with col2:
             st.caption("プレイヤー2")
-            name2 = st.text_input("名前", value=nicknames[1] if len(nicknames) > 1 else "", key="name2", label_visibility="collapsed")
-            score2 = st.number_input("点数", value=scores[1] if len(scores) > 1 else 25000, key="score2", label_visibility="collapsed")
+            name2 = st.text_input(
+                "名前", 
+                value=players[1].get('nickname', ''), 
+                key="name2", 
+                label_visibility="collapsed",
+                placeholder="ニックネーム"
+            )
+            score2 = st.number_input(
+                "点数", 
+                value=int(players[1].get('score', 25000)), 
+                min_value=-100000,
+                max_value=200000,
+                step=100,
+                key="score2", 
+                label_visibility="collapsed"
+            )
             players_data.append({"name": name2, "score": score2})
         
         with col3:
             st.caption("プレイヤー3")
-            name3 = st.text_input("名前", value=nicknames[2] if len(nicknames) > 2 else "", key="name3", label_visibility="collapsed")
-            score3 = st.number_input("点数", value=scores[2] if len(scores) > 2 else 25000, key="score3", label_visibility="collapsed")
+            name3 = st.text_input(
+                "名前", 
+                value=players[2].get('nickname', ''), 
+                key="name3", 
+                label_visibility="collapsed",
+                placeholder="ニックネーム"
+            )
+            score3 = st.number_input(
+                "点数", 
+                value=int(players[2].get('score', 25000)), 
+                min_value=-100000,
+                max_value=200000,
+                step=100,
+                key="score3", 
+                label_visibility="collapsed"
+            )
             players_data.append({"name": name3, "score": score3})
         
         with col4:
             st.caption("プレイヤー4")
-            name4 = st.text_input("名前", value=nicknames[3] if len(nicknames) > 3 else "", key="name4", label_visibility="collapsed")
-            score4 = st.number_input("点数", value=scores[3] if len(scores) > 3 else 25000, key="score4", label_visibility="collapsed")
+            name4 = st.text_input(
+                "名前", 
+                value=players[3].get('nickname', ''), 
+                key="name4", 
+                label_visibility="collapsed",
+                placeholder="ニックネーム"
+            )
+            score4 = st.number_input(
+                "点数", 
+                value=int(players[3].get('score', 25000)), 
+                min_value=-100000,
+                max_value=200000,
+                step=100,
+                key="score4", 
+                label_visibility="collapsed"
+            )
             players_data.append({"name": name4, "score": score4})
         
         st.divider()
@@ -157,6 +398,11 @@ def create_extraction_form():
         
         notes = st.text_area("メモ", placeholder="特記事項", height=80)
         
+        # 信頼度による警告表示
+        confidence = result.get('confidence', 0.0)
+        if confidence < 0.8:
+            st.warning(f"解析信頼度が{confidence:.0%}です。データを確認してください。")
+        
         # 保存ボタン
         submitted = st.form_submit_button("記録を保存", type="primary", use_container_width=True)
         
@@ -164,8 +410,12 @@ def create_extraction_form():
             save_game_record_with_names(players_data, game_date, game_time, game_type, notes)
 
 def create_manual_input_form():
-    """手動入力フォーム - シンプルデザイン"""
+    """手動入力フォーム"""
     st.subheader("対局データ入力")
+    
+    # デフォルト値を設定ファイルから取得
+    config_manager = ConfigManager()
+    default_game_type = config_manager.get_default_game_type()
     
     with st.form("manual_input_form"):
         # プレイヤー情報
@@ -176,25 +426,25 @@ def create_manual_input_form():
         with col1:
             st.caption("プレイヤー1")
             name1 = st.text_input("名前", key="manual_name1", label_visibility="collapsed", placeholder="ニックネーム")
-            score1 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, key="manual_score1", label_visibility="collapsed")
+            score1 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, step=100, key="manual_score1", label_visibility="collapsed")
             players_data.append({"name": name1, "score": score1})
         
         with col2:
             st.caption("プレイヤー2")
             name2 = st.text_input("名前", key="manual_name2", label_visibility="collapsed", placeholder="ニックネーム")
-            score2 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, key="manual_score2", label_visibility="collapsed")
+            score2 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, step=100, key="manual_score2", label_visibility="collapsed")
             players_data.append({"name": name2, "score": score2})
         
         with col3:
             st.caption("プレイヤー3")
             name3 = st.text_input("名前", key="manual_name3", label_visibility="collapsed", placeholder="ニックネーム")
-            score3 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, key="manual_score3", label_visibility="collapsed")
+            score3 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, step=100, key="manual_score3", label_visibility="collapsed")
             players_data.append({"name": name3, "score": score3})
         
         with col4:
             st.caption("プレイヤー4")
             name4 = st.text_input("名前", key="manual_name4", label_visibility="collapsed", placeholder="ニックネーム")
-            score4 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, key="manual_score4", label_visibility="collapsed")
+            score4 = st.number_input("点数", min_value=-100000, max_value=200000, value=25000, step=100, key="manual_score4", label_visibility="collapsed")
             players_data.append({"name": name4, "score": score4})
         
         st.divider()
@@ -209,7 +459,9 @@ def create_manual_input_form():
             game_time = st.time_input("対局時刻")
         
         with col_info3:
-            game_type = st.selectbox("対局タイプ", ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"])
+            game_types = ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"]
+            default_index = game_types.index(default_game_type) if default_game_type in game_types else 0
+            game_type = st.selectbox("対局タイプ", game_types, index=default_index)
         
         notes = st.text_area("メモ", placeholder="特記事項", height=80)
         
@@ -251,19 +503,27 @@ def save_game_record_with_names(players_data, game_date, game_time, game_type, n
     st.session_state['game_records'].append(game_data)
     st.success("記録を保存しました")
     
-    # Google Sheets保存
-    if 'credentials' in st.session_state and 'spreadsheet_id' in st.session_state:
-        try:
-            sheet_manager = SpreadsheetManager(st.session_state['credentials'])
-            if sheet_manager.connect(st.session_state['spreadsheet_id']):
-                if sheet_manager.add_record(game_data):
-                    st.info("Google Sheetsにも保存しました")
-        except Exception as e:
-            st.warning(f"Google Sheets保存に失敗: {e}")
+    # Google Sheets保存（設定ファイルから）
+    config_manager = ConfigManager()
+    if config_manager.get_auto_save_to_sheets():
+        sheets_creds = config_manager.load_sheets_credentials()
+        spreadsheet_id = config_manager.get_spreadsheet_id()
+        
+        if sheets_creds and spreadsheet_id:
+            try:
+                sheet_manager = SpreadsheetManager(sheets_creds)
+                if sheet_manager.connect(spreadsheet_id):
+                    if sheet_manager.add_record(game_data):
+                        st.info("Google Sheetsにも保存しました")
+            except Exception as e:
+                st.warning(f"Google Sheets保存に失敗: {e}")
+        else:
+            st.info("Google Sheets設定が不完全です（自動保存スキップ）")
 
 def display_simple_table(data, title="データ"):
     """シンプルなテーブル表示"""
-    st.subheader(title)
+    if title:
+        st.subheader(title)
     
     if not data:
         st.info("表示するデータがありません")
