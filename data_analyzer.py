@@ -6,7 +6,7 @@ from typing import Dict, List
 import streamlit as st
 
 class MahjongDataAnalyzer:
-    """麻雀対局データの分析クラス"""
+    """麻雀対局データの分析クラス - シンプルで効率的な分析"""
     
     def __init__(self, game_records: List[Dict]):
         self.records = game_records
@@ -29,11 +29,12 @@ class MahjongDataAnalyzer:
         for i in range(1, 5):
             score_col = f'player{i}_score'
             if score_col in self.df.columns:
-                scores = pd.to_numeric(self.df[score_col], errors='coerce')
-                stats['avg_scores'][f'player{i}'] = scores.mean()
-                stats['total_scores'][f'player{i}'] = scores.sum()
-                stats['max_scores'][f'player{i}'] = scores.max()
-                stats['min_scores'][f'player{i}'] = scores.min()
+                scores = pd.to_numeric(self.df[score_col], errors='coerce').dropna()
+                if len(scores) > 0:
+                    stats['avg_scores'][f'player{i}'] = scores.mean()
+                    stats['total_scores'][f'player{i}'] = scores.sum()
+                    stats['max_scores'][f'player{i}'] = scores.max()
+                    stats['min_scores'][f'player{i}'] = scores.min()
         
         return stats
     
@@ -50,7 +51,8 @@ class MahjongDataAnalyzer:
             for i in range(1, 5):
                 score_col = f'player{i}_score'
                 if score_col in row:
-                    scores.append(pd.to_numeric(row[score_col], errors='coerce'))
+                    score = pd.to_numeric(row[score_col], errors='coerce')
+                    scores.append(score if pd.notna(score) else 0)
                 else:
                     scores.append(0)
             
@@ -74,7 +76,7 @@ class MahjongDataAnalyzer:
         }
     
     def create_score_trend_chart(self) -> go.Figure:
-        """点数推移グラフを作成"""
+        """点数推移グラフを作成 - シンプルなデザイン"""
         if self.df.empty:
             return go.Figure()
         
@@ -85,7 +87,8 @@ class MahjongDataAnalyzer:
         
         fig = go.Figure()
         
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A']
+        # シンプルなカラーパレット
+        colors = ['#2563eb', '#dc2626', '#059669', '#d97706']
         
         for i in range(1, 5):
             score_col = f'player{i}_score'
@@ -93,26 +96,45 @@ class MahjongDataAnalyzer:
                 scores = pd.to_numeric(df_sorted[score_col], errors='coerce')
                 
                 fig.add_trace(go.Scatter(
-                    x=list(range(len(df_sorted))),
+                    x=list(range(1, len(df_sorted) + 1)),
                     y=scores,
                     mode='lines+markers',
                     name=f'プレイヤー{i}',
-                    line=dict(width=2, color=colors[i-1]),
-                    marker=dict(size=6)
+                    line=dict(width=3, color=colors[i-1]),
+                    marker=dict(size=6, color=colors[i-1]),
+                    hovertemplate=f'プレイヤー{i}<br>対局: %{{x}}<br>点数: %{{y:,}}点<extra></extra>'
                 ))
         
         fig.update_layout(
-            title="対局ごとの点数推移",
+            title={
+                'text': "対局ごとの点数推移",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 18, 'color': '#1f2937'}
+            },
             xaxis_title="対局回数",
             yaxis_title="点数",
             hovermode='x unified',
-            height=400
+            height=400,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            plot_bgcolor='white',
+            paper_bgcolor='white'
         )
+        
+        fig.update_xaxes(gridcolor='#e5e7eb', linecolor='#d1d5db')
+        fig.update_yaxes(gridcolor='#e5e7eb', linecolor='#d1d5db')
         
         return fig
     
     def create_rank_distribution_chart(self) -> go.Figure:
-        """順位分布グラフを作成"""
+        """順位分布グラフを作成 - シンプルなデザイン"""
         rank_stats = self.calculate_rank_stats()
         
         if not rank_stats or 'rank_distribution' not in rank_stats:
@@ -121,7 +143,7 @@ class MahjongDataAnalyzer:
         fig = go.Figure()
         
         players = [f'プレイヤー{i}' for i in range(1, 5)]
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A']
+        colors = ['#2563eb', '#dc2626', '#059669', '#d97706']
         
         for i, (player_key, distribution) in enumerate(rank_stats['rank_distribution'].items()):
             ranks = list(range(1, 5))
@@ -131,21 +153,40 @@ class MahjongDataAnalyzer:
                 x=[f'{rank}位' for rank in ranks],
                 y=counts,
                 name=players[i],
-                marker_color=colors[i]
+                marker_color=colors[i],
+                hovertemplate=f'{players[i]}<br>順位: %{{x}}<br>回数: %{{y}}回<extra></extra>'
             ))
         
         fig.update_layout(
-            title="順位分布",
+            title={
+                'text': "順位分布",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 18, 'color': '#1f2937'}
+            },
             xaxis_title="順位",
             yaxis_title="回数",
             barmode='group',
-            height=400
+            height=400,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            plot_bgcolor='white',
+            paper_bgcolor='white'
         )
+        
+        fig.update_xaxes(gridcolor='#e5e7eb', linecolor='#d1d5db')
+        fig.update_yaxes(gridcolor='#e5e7eb', linecolor='#d1d5db')
         
         return fig
     
     def create_average_score_chart(self) -> go.Figure:
-        """平均点数比較グラフを作成"""
+        """平均点数比較グラフを作成 - シンプルなデザイン"""
         stats = self.calculate_basic_stats()
         
         if not stats or 'avg_scores' not in stats:
@@ -153,7 +194,7 @@ class MahjongDataAnalyzer:
         
         players = [f'プレイヤー{i}' for i in range(1, 5)]
         avg_scores = [stats['avg_scores'].get(f'player{i}', 0) for i in range(1, 5)]
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A']
+        colors = ['#2563eb', '#dc2626', '#059669', '#d97706']
         
         fig = go.Figure(data=[
             go.Bar(
@@ -161,16 +202,29 @@ class MahjongDataAnalyzer:
                 y=avg_scores,
                 marker_color=colors,
                 text=[f'{score:,.0f}' for score in avg_scores],
-                textposition='auto'
+                textposition='auto',
+                textfont=dict(color='white', size=12),
+                hovertemplate='%{x}<br>平均点数: %{y:,.0f}点<extra></extra>'
             )
         ])
         
         fig.update_layout(
-            title="プレイヤー別平均点数",
+            title={
+                'text': "プレイヤー別平均点数",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 18, 'color': '#1f2937'}
+            },
             xaxis_title="プレイヤー",
             yaxis_title="平均点数",
-            height=400
+            height=400,
+            showlegend=False,
+            plot_bgcolor='white',
+            paper_bgcolor='white'
         )
+        
+        fig.update_xaxes(gridcolor='#e5e7eb', linecolor='#d1d5db')
+        fig.update_yaxes(gridcolor='#e5e7eb', linecolor='#d1d5db')
         
         return fig
     
@@ -198,3 +252,21 @@ class MahjongDataAnalyzer:
             'best_player': best_player,
             'best_average': best_avg
         }
+    
+    def get_player_names(self) -> Dict:
+        """各プレイヤーの最も使用頻度の高い名前を取得"""
+        player_names = {}
+        
+        for i in range(1, 5):
+            name_col = f'player{i}_name'
+            if name_col in self.df.columns:
+                names = self.df[name_col].dropna()
+                if not names.empty:
+                    most_common = names.mode()
+                    player_names[f'player{i}'] = most_common.iloc[0] if len(most_common) > 0 else f"プレイヤー{i}"
+                else:
+                    player_names[f'player{i}'] = f"プレイヤー{i}"
+            else:
+                player_names[f'player{i}'] = f"プレイヤー{i}"
+        
+        return player_names

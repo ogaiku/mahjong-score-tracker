@@ -4,10 +4,10 @@ import pandas as pd
 from data_analyzer import MahjongDataAnalyzer
 
 def show_data_modal():
-    """データ表示モーダル"""
+    """データ表示モーダル - シンプルデザイン"""
+    st.subheader("保存済み対局記録")
+    
     if 'game_records' in st.session_state and st.session_state['game_records']:
-        st.subheader("保存済み対局記録")
-        
         df = pd.DataFrame(st.session_state['game_records'])
         
         # 表示用にデータを整理
@@ -16,8 +16,8 @@ def show_data_modal():
         # 列名を日本語に変更
         column_mapping = {
             'date': '対局日',
-            'time': '対局時刻',
-            'game_type': '対局タイプ',
+            'time': '時刻',
+            'game_type': 'タイプ',
             'player1_name': 'P1名前',
             'player1_score': 'P1点数',
             'player2_name': 'P2名前',
@@ -31,89 +31,103 @@ def show_data_modal():
         
         display_df = display_df.rename(columns=column_mapping)
         
-        # timestampを除外
-        if '登録日時' in display_df.columns:
-            display_df = display_df.drop('登録日時', axis=1)
+        # 不要な列を除外
         if 'timestamp' in display_df.columns:
             display_df = display_df.drop('timestamp', axis=1)
         
-        st.dataframe(display_df, use_container_width=True)
+        # データ表示
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
         
-        col1, col2 = st.columns(2)
+        # ボタン
+        col1, col2, col3 = st.columns([1, 1, 2])
         
         with col1:
-            if st.button("データ表示を閉じる"):
+            if st.button("閉じる", use_container_width=True, key="close_data_modal_btn"):
                 st.session_state['show_data'] = False
                 st.rerun()
         
         with col2:
-            # 記録削除
-            if st.button("全記録削除", type="secondary"):
-                if st.checkbox("本当に削除しますか？", key="delete_confirm"):
+            if st.button("全削除", type="secondary", use_container_width=True, key="delete_all_data_btn"):
+                if 'delete_confirm' not in st.session_state:
+                    st.session_state['delete_confirm'] = False
+                
+                if not st.session_state['delete_confirm']:
+                    st.session_state['delete_confirm'] = True
+                    st.rerun()
+                else:
                     del st.session_state['game_records']
                     st.session_state['show_data'] = False
+                    st.session_state['delete_confirm'] = False
                     st.success("全記録を削除しました")
                     st.rerun()
+        
+        with col3:
+            if st.session_state.get('delete_confirm', False):
+                st.warning("もう一度「全削除」ボタンを押してください")
+        
     else:
         st.info("表示する記録がありません")
-        if st.button("データ表示を閉じる"):
+        if st.button("閉じる", key="close_empty_data_modal_btn"):
             st.session_state['show_data'] = False
             st.rerun()
 
 def show_statistics_modal():
-    """統計表示モーダル"""
+    """統計表示モーダル - シンプルデザイン"""
+    st.subheader("統計分析")
+    
     if 'game_records' in st.session_state and st.session_state['game_records']:
-        st.subheader("統計分析")
-        
         analyzer = MahjongDataAnalyzer(st.session_state['game_records'])
         
         # 基本統計
         stats = analyzer.calculate_basic_stats()
         
+        # メトリクス表示
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("総対局数", stats.get('total_games', 0))
+            st.metric("総対局数", f"{stats.get('total_games', 0)}回")
         
-        with col2:
-            if 'avg_scores' in stats and 'player1' in stats['avg_scores']:
-                avg_1 = stats['avg_scores']['player1']
-                st.metric("P1平均点数", f"{avg_1:,.0f}点")
-        
-        with col3:
-            if 'avg_scores' in stats and 'player2' in stats['avg_scores']:
-                avg_2 = stats['avg_scores']['player2']
-                st.metric("P2平均点数", f"{avg_2:,.0f}点")
-        
-        with col4:
-            if 'avg_scores' in stats and 'player3' in stats['avg_scores']:
-                avg_3 = stats['avg_scores']['player3']
-                st.metric("P3平均点数", f"{avg_3:,.0f}点")
+        # 各プレイヤーの平均点数
+        if 'avg_scores' in stats:
+            avg_scores = stats['avg_scores']
+            player_metrics = [
+                ('P1平均', avg_scores.get('player1', 0)),
+                ('P2平均', avg_scores.get('player2', 0)),
+                ('P3平均', avg_scores.get('player3', 0))
+            ]
+            
+            for i, (label, value) in enumerate(player_metrics):
+                with [col2, col3, col4][i]:
+                    st.metric(label, f"{value:,.0f}点")
         
         # グラフ表示
-        col_chart1, col_chart2 = st.columns(2)
+        tab1, tab2, tab3 = st.tabs(["点数推移", "平均点数比較", "順位分布"])
         
-        with col_chart1:
-            st.subheader("点数推移")
+        with tab1:
             trend_chart = analyzer.create_score_trend_chart()
-            st.plotly_chart(trend_chart, use_container_width=True)
+            if trend_chart.data:
+                st.plotly_chart(trend_chart, use_container_width=True)
+            else:
+                st.info("グラフを表示するデータがありません")
         
-        with col_chart2:
-            st.subheader("平均点数比較")
+        with tab2:
             avg_chart = analyzer.create_average_score_chart()
-            st.plotly_chart(avg_chart, use_container_width=True)
+            if avg_chart.data:
+                st.plotly_chart(avg_chart, use_container_width=True)
+            else:
+                st.info("グラフを表示するデータがありません")
         
-        # 順位分布
-        st.subheader("順位分布")
-        rank_chart = analyzer.create_rank_distribution_chart()
-        st.plotly_chart(rank_chart, use_container_width=True)
+        with tab3:
+            rank_chart = analyzer.create_rank_distribution_chart()
+            if rank_chart.data:
+                st.plotly_chart(rank_chart, use_container_width=True)
+            else:
+                st.info("グラフを表示するデータがありません")
         
         # プレイヤー別詳細統計
         st.subheader("プレイヤー別詳細統計")
         
         df = pd.DataFrame(st.session_state['game_records'])
-        
-        # 各プレイヤーの統計表
         player_stats = []
         
         for i in range(1, 5):
@@ -130,23 +144,28 @@ def show_statistics_modal():
                 else:
                     most_common_name = f"プレイヤー{i}"
                 
-                player_stats.append({
-                    'プレイヤー': most_common_name,
-                    '平均点数': f"{scores.mean():,.0f}点",
-                    '最高点数': f"{scores.max():,.0f}点",
-                    '最低点数': f"{scores.min():,.0f}点",
-                    '対局数': len(scores.dropna())
-                })
+                if not scores.empty:
+                    player_stats.append({
+                        'プレイヤー': most_common_name,
+                        '平均点数': f"{scores.mean():,.0f}点",
+                        '最高点数': f"{scores.max():,.0f}点",
+                        '最低点数': f"{scores.min():,.0f}点",
+                        '対局数': f"{len(scores.dropna())}回"
+                    })
         
         if player_stats:
             stats_df = pd.DataFrame(player_stats)
-            st.dataframe(stats_df, use_container_width=True)
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("統計データがありません")
         
-        if st.button("統計表示を閉じる"):
+        # 閉じるボタン
+        if st.button("統計表示を閉じる", use_container_width=True, key="close_stats_modal_btn"):
             st.session_state['show_stats'] = False
             st.rerun()
+    
     else:
         st.info("統計を表示するデータがありません")
-        if st.button("統計表示を閉じる"):
+        if st.button("統計表示を閉じる", key="close_empty_stats_modal_btn"):
             st.session_state['show_stats'] = False
             st.rerun()
