@@ -159,10 +159,18 @@ def display_config_status(config_manager: ConfigManager):
                     with col2:
                         spreadsheet_url = info.get('url', '')
                         if spreadsheet_url and st.button("リンク", key=f"open_{key}", help="クリックでリンクを表示"):
-                            # 折りたたみ表示でリンクを表示
-                            with st.expander("スプレッドシートリンク", expanded=True):
-                                st.code(spreadsheet_url, language=None)
-                                st.caption("上のリンクを選択してコピーしてください")
+                            # セッション状態でリンク表示を管理
+                            show_link_key = f"show_link_{key}"
+                            if show_link_key not in st.session_state:
+                                st.session_state[show_link_key] = False
+                            st.session_state[show_link_key] = not st.session_state[show_link_key]
+                            
+                    # リンク表示（expanderの外で）
+                    show_link_key = f"show_link_{key}"
+                    if show_link_key in st.session_state and st.session_state[show_link_key]:
+                        st.text("スプレッドシートリンク:")
+                        st.code(spreadsheet_url, language=None)
+                        st.caption("上のリンクを選択してコピーしてください")
                     with col3:
                         if not is_current and st.button("選択", key=f"select_{key}", help="このシーズンに切り替え"):
                             if switch_season_automatically(config_manager, key):
@@ -214,7 +222,13 @@ def create_and_switch_season_simple(config_manager: ConfigManager, season_name: 
         return False, {"error": str(e)}
 
 def switch_season_automatically(config_manager: ConfigManager, season_key: str) -> bool:
-    pass
+    """シーズンを自動切り替え"""
+    try:
+        return config_manager.set_current_season(season_key)
+    except Exception as e:
+        st.error(f"シーズン切り替えエラー: {e}")
+        return False
+
 def load_season_data(config_manager: ConfigManager, season_key: str):
     """指定したシーズンのデータを読み込み"""
     try:
@@ -287,180 +301,8 @@ def delete_season_with_confirmation(config_manager: ConfigManager, season_key: s
         else:
             return False
     except Exception as e:
-    st.error(f"シーズン削除エラー: {e}")
-    return False
-
-# tab_pages.py
-import streamlit as st
-import pandas as pd
-from PIL import Image
-from datetime import date
-    extract_data_from_image,
-    display_extraction_results,
-    create_extraction_form,
-    create_manual_input_form,
-    display_simple_table,
-    create_clean_metrics
-)
-from data_modals import show_data_modal, show_statistics_modal
-
-def home_tab():
-    """ホームタブ - 情報表示用"""
-    st.header("ダッシュボード")
-    
-    # 統計サマリー
-    if 'game_records' in st.session_state and st.session_state['game_records']:
-        st.subheader("統計サマリー")
-        
-        df = pd.DataFrame(st.session_state['game_records'])
-        
-        # 基本統計の計算
-        stats = {
-            'total_games': len(df),
-            'avg_scores': {}
-        }
-        
-        for i in range(1, 5):
-            score_col = f'player{i}_score'
-            if score_col in df.columns:
-                scores = pd.to_numeric(df[score_col], errors='coerce')
-                stats['avg_scores'][f'player{i}'] = scores.mean()
-        
-        create_clean_metrics(stats)
-        
-        # 最近の記録
-        st.subheader("最近の対局記録")
-        recent_records = st.session_state['game_records'][-5:]  # 最新5件
-        display_simple_table(recent_records, "")
-        
-    else:
-        st.info("まだ記録がありません。上記のボタンから対局データを追加してください。")
-    
-    # モーダル表示
-    if st.session_state.get('show_data', False):
-        show_data_modal()
-    
-    if st.session_state.get('show_stats', False):
-        show_statistics_modal()
-
-def screenshot_upload_tab():
-    """スクリーンショットアップロードタブ - シンプルデザイン"""
-    st.header("スクリーンショット解析")
-    
-    # 画像アップロード
-    uploaded_file = st.file_uploader(
-        "画像ファイルを選択",
-        type=['png', 'jpg', 'jpeg']
-    )
-    
-    if uploaded_file is not None:
-        # 画像表示
-        image = Image.open(uploaded_file)
-        
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            st.subheader("アップロード画像")
-            st.image(image, use_container_width=True)
-            
-            # 解析ボタン
-            if st.button("解析開始", type="primary", use_container_width=True, key="screenshot_analyze_btn"):
-                extract_data_from_image(image)
-                st.rerun()
-        
-        with col2:
-            st.subheader("解析結果")
-            
-            if 'analysis_result' in st.session_state:
-                display_extraction_results()
-            else:
-                st.info("「解析開始」ボタンを押してください")
-    
-    # データ確認・修正フォーム
-    if 'analysis_result' in st.session_state:
-        st.divider()
-        create_extraction_form()
-
-def manual_input_tab():
-    """手動入力タブ - シンプルデザイン"""
-    st.header("手動データ入力")
-    
-    create_manual_input_form()
-def create_and_switch_season(config_manager: ConfigManager, season_key: str, season_name: str, auto_switch: bool = True) -> tuple[bool, dict]:
-    """新しいシーズンを作成し、オプションで切り替え"""
-    try:
-        # シーズンを自動作成（常に自動作成）
-        if config_manager.add_season(season_key, season_name, auto_create=True):
-            # 自動切り替えが有効な場合
-            if auto_switch:
-                if config_manager.set_current_season(season_key):
-                    # 新しいシーズンのデータを初期化
-                    initialize_new_season_data()
-                    return True, {"switched": True}
-                else:
-                    return True, {"switched": False, "error": "切り替えに失敗"}
-            return True, {"switched": False}
-        return False, {"error": "シーズン作成に失敗"}
-    except Exception as e:
-        st.error(f"シーズン作成エラー: {e}")
-        return False, {"error": str(e)}
-
-def load_season_data(config_manager: ConfigManager, season_key: str):
-    """指定したシーズンのデータを読み込み"""
-    try:
-        # 現在のローカルデータをクリア
-        if 'game_records' in st.session_state:
-            del st.session_state['game_records']
-        
-        # Google Sheetsからデータを読み込み（可能な場合）
-        sheets_creds = config_manager.load_sheets_credentials()
-        spreadsheet_id = config_manager.get_spreadsheet_id()
-        
-        if sheets_creds and spreadsheet_id:
-            try:
-                sheet_manager = SpreadsheetManager(sheets_creds)
-                if sheet_manager.connect(spreadsheet_id):
-                    records = sheet_manager.get_all_records()
-                    if records:
-                        # Google Sheetsの形式からアプリの形式に変換
-                        converted_records = convert_sheets_records(records)
-                        st.session_state['game_records'] = converted_records
-                        st.info(f"シーズン '{season_key}' のデータを読み込みました ({len(converted_records)}件)")
-                    else:
-                        st.info(f"シーズン '{season_key}' にはまだデータがありません")
-            except Exception as e:
-                st.warning(f"シーズンデータの読み込みに失敗: {e}")
-    except Exception as e:
-        st.error(f"データ読み込みエラー: {e}")
-
-def initialize_new_season_data():
-    """新しいシーズンのデータを初期化"""
-    if 'game_records' in st.session_state:
-        del st.session_state['game_records']
-    st.info("新しいシーズンを開始しました")
-
-def convert_sheets_records(sheets_records: list) -> list:
-    """Google Sheetsの記録をアプリの形式に変換"""
-    converted = []
-    for record in sheets_records:
-        # Google Sheetsの列名からアプリの形式に変換
-        converted_record = {
-            'date': record.get('対局日', ''),
-            'time': record.get('対局時刻', ''),
-            'game_type': record.get('対局タイプ', ''),
-            'player1_name': record.get('プレイヤー1名', ''),
-            'player1_score': record.get('プレイヤー1点数', 0),
-            'player2_name': record.get('プレイヤー2名', ''),
-            'player2_score': record.get('プレイヤー2点数', 0),
-            'player3_name': record.get('プレイヤー3名', ''),
-            'player3_score': record.get('プレイヤー3点数', 0),
-            'player4_name': record.get('プレイヤー4名', ''),
-            'player4_score': record.get('プレイヤー4点数', 0),
-            'notes': record.get('メモ', ''),
-            'timestamp': record.get('登録日時', '')
-        }
-        converted.append(converted_record)
-    return converted
+        st.error(f"シーズン削除エラー: {e}")
+        return False
 
 def extract_data_from_image(image):
     """画像からデータを抽出"""
