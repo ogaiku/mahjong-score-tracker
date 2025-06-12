@@ -2,3 +2,18 @@ config.json
 google_credentials.json
 sheets_credentials.json
 vision_credentials.json
+mahjong-app-462715-51b327e84e06.json
+# Google Cloud認証ファイル
+*.json
+!config_template.json
+
+# バックアップファイル
+*.backup
+*.bak
+
+# Pythonキャッシュ
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
