@@ -1,4 +1,4 @@
-# config_manager.py - 設定ファイル管理
+# config_manager.py - 設定ファイル管理（シーズン管理強化版）
 import json
 import os
 from typing import Dict, Optional, Union
@@ -133,24 +133,22 @@ class ConfigManager:
         seasons = self.get_all_seasons()
         return seasons.get(season_key, {})
     
-    def add_season(self, season_key: str, name: str, url: str = "", auto_create: bool = False) -> bool:
-        """新しいシーズンを追加"""
+    def add_season(self, season_key: str, name: str, auto_create: bool = True) -> bool:
+        """新しいシーズンを追加（常に自動作成）"""
         try:
-            spreadsheet_id = ""
+            # 既存のシーズンキーをチェック
+            existing_seasons = self.get_all_seasons()
+            if season_key in existing_seasons:
+                st.error(f"シーズンキー '{season_key}' は既に存在します")
+                return False
             
-            if url:
-                # URLからスプレッドシートIDを抽出
-                spreadsheet_id = self.extract_spreadsheet_id(url)
-                if not spreadsheet_id:
-                    st.error("有効なスプレッドシートURLを入力してください")
-                    return False
-            elif auto_create:
-                # 自動でスプレッドシートを作成
-                spreadsheet_id, url = self._create_new_spreadsheet(name)
-                if not spreadsheet_id:
-                    return False
+            # 自動でスプレッドシートを作成
+            result = self._create_new_spreadsheet(name)
+            if result['success']:
+                spreadsheet_id = result['spreadsheet_id']
+                url = result['url']
             else:
-                st.error("URLまたは自動作成を選択してください")
+                st.error(f"スプレッドシート作成に失敗: {result.get('error', '不明なエラー')}")
                 return False
             
             # シーズン情報を追加
@@ -162,7 +160,8 @@ class ConfigManager:
             self.config["google_sheets"]["seasons"][season_key] = {
                 "name": name,
                 "spreadsheet_id": spreadsheet_id,
-                "url": url
+                "url": url,
+                "created_at": self._get_current_timestamp()
             }
             
             return self.save_config()
@@ -170,8 +169,8 @@ class ConfigManager:
             st.error(f"シーズン追加エラー: {e}")
             return False
     
-    def _create_new_spreadsheet(self, title: str) -> tuple[str, str]:
-        """新しいスプレッドシートを自動作成"""
+    def _create_new_spreadsheet(self, title: str) -> Dict:
+        """新しいスプレッドシートを自動作成（公開設定）"""
         try:
             from google.oauth2 import service_account
             from googleapiclient.discovery import build
@@ -179,8 +178,10 @@ class ConfigManager:
             # 認証情報を取得
             creds_dict = self.load_sheets_credentials()
             if not creds_dict:
-                st.error("Google Sheets認証情報が見つかりません")
-                return "", ""
+                return {
+                    'success': False,
+                    'error': "Google Sheets認証情報が見つかりません"
+                }
             
             # サービスアカウント認証
             credentials = service_account.Credentials.from_service_account_info(
@@ -193,6 +194,7 @@ class ConfigManager:
             
             # Google Sheets APIサービス
             sheets_service = build('sheets', 'v4', credentials=credentials)
+            drive_service = build('drive', 'v3', credentials=credentials)
             
             # スプレッドシート作成
             spreadsheet_body = {
@@ -210,20 +212,43 @@ class ConfigManager:
             spreadsheet_id = response['spreadsheetId']
             url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
             
-            # ヘッダー行を追加
-            self._initialize_spreadsheet_headers(sheets_service, spreadsheet_id)
+            # スプレッドシートを公開設定にする
+            try:
+                permission = {
+                    'type': 'anyone',
+                    'role': 'writer'  # 編集可能
+                }
+                drive_service.permissions().create(
+                    fileId=spreadsheet_id,
+                    body=permission
+                ).execute()
+            except Exception as e:
+                st.warning(f"公開設定に失敗しましたが、スプレッドシートは作成されました: {e}")
             
-            st.success(f"新しいスプレッドシート '{title}' を作成しました")
-            return spreadsheet_id, url
+            # ヘッダー行を追加
+            header_result = self._initialize_spreadsheet_headers(sheets_service, spreadsheet_id)
+            if not header_result['success']:
+                st.warning(f"ヘッダー初期化に問題がありました: {header_result.get('warning', '')}")
+            
+            return {
+                'success': True,
+                'spreadsheet_id': spreadsheet_id,
+                'url': url,
+                'message': f"新しいスプレッドシート '{title}' を作成しました（公開設定）"
+            }
             
         except ImportError:
-            st.error("google-api-python-clientライブラリが必要です: pip install google-api-python-client")
-            return "", ""
+            return {
+                'success': False,
+                'error': "google-api-python-clientライブラリが必要です: pip install google-api-python-client"
+            }
         except Exception as e:
-            st.error(f"スプレッドシート作成エラー: {e}")
-            return "", ""
+            return {
+                'success': False,
+                'error': f"スプレッドシート作成エラー: {str(e)}"
+            }
     
-    def _initialize_spreadsheet_headers(self, sheets_service, spreadsheet_id: str):
+    def _initialize_spreadsheet_headers(self, sheets_service, spreadsheet_id: str) -> Dict:
         """スプレッドシートにヘッダー行を追加"""
         try:
             headers = [
@@ -277,8 +302,13 @@ class ConfigManager:
                 body=format_body
             ).execute()
             
+            return {'success': True}
+            
         except Exception as e:
-            st.warning(f"ヘッダー初期化に失敗しましたが、スプレッドシートは作成されました: {e}")
+            return {
+                'success': False,
+                'warning': f"ヘッダー初期化に失敗しましたが、スプレッドシートは作成されました: {e}"
+            }
     
     def set_current_season(self, season_key: str) -> bool:
         """現在のシーズンを変更"""
@@ -289,9 +319,36 @@ class ConfigManager:
                 return False
             
             self.config.setdefault("google_sheets", {})["current_season"] = season_key
-            return self.save_config()
+            success = self.save_config()
+            
+            if success:
+                # 設定を再読み込み
+                self.config = self.load_config()
+            
+            return success
         except Exception as e:
             st.error(f"シーズン変更エラー: {e}")
+            return False
+    
+    def delete_season(self, season_key: str) -> bool:
+        """シーズンを削除（現在のシーズンは削除不可）"""
+        try:
+            current_season = self.get_current_season()
+            if season_key == current_season:
+                st.error("現在のシーズンは削除できません")
+                return False
+            
+            seasons = self.get_all_seasons()
+            if season_key not in seasons:
+                st.error(f"シーズン '{season_key}' が見つかりません")
+                return False
+            
+            # シーズンを削除
+            del self.config["google_sheets"]["seasons"][season_key]
+            return self.save_config()
+            
+        except Exception as e:
+            st.error(f"シーズン削除エラー: {e}")
             return False
     
     def extract_spreadsheet_id(self, url: str) -> str:
@@ -355,6 +412,11 @@ class ConfigManager:
             st.error(f"設定更新エラー: {e}")
             return False
     
+    def _get_current_timestamp(self) -> str:
+        """現在のタイムスタンプを取得"""
+        from datetime import datetime
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
     def get_config_status(self) -> Dict:
         """設定状況を確認"""
         vision_creds = self.load_vision_credentials()
@@ -372,6 +434,41 @@ class ConfigManager:
             "seasons": seasons
         }
         return status
+    
+    def validate_season_data(self, season_key: str) -> Dict:
+        """シーズンデータの整合性をチェック"""
+        season_info = self.get_season_info(season_key)
+        
+        if not season_info:
+            return {
+                'valid': False,
+                'errors': [f"シーズン '{season_key}' が見つかりません"]
+            }
+        
+        errors = []
+        warnings = []
+        
+        # 必須フィールドのチェック
+        required_fields = ['name', 'spreadsheet_id', 'url']
+        for field in required_fields:
+            if not season_info.get(field):
+                errors.append(f"'{field}' が設定されていません")
+        
+        # スプレッドシートIDとURLの整合性チェック
+        spreadsheet_id = season_info.get('spreadsheet_id', '')
+        url = season_info.get('url', '')
+        
+        if spreadsheet_id and url:
+            extracted_id = self.extract_spreadsheet_id(url)
+            if extracted_id != spreadsheet_id:
+                warnings.append("URLから抽出されるIDと設定されているIDが一致しません")
+        
+        return {
+            'valid': len(errors) == 0,
+            'errors': errors,
+            'warnings': warnings,
+            'info': season_info
+        }
 
 def create_config_template():
     """設定ファイルのテンプレートを作成"""

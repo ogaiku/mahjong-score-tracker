@@ -70,7 +70,7 @@ def screenshot_upload_tab():
         
         with col1:
             st.subheader("アップロード画像")
-            st.image(image, use_container_width=True)
+            st.image(image, use_column_width=True)
             
             # 解析ボタン
             if st.button("解析開始", type="primary", use_container_width=True, key="screenshot_analyze_btn"):
