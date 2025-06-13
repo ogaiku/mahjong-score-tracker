@@ -95,18 +95,8 @@ def main():
     # サイドバー設定
     setup_sidebar()
     
-    # セッション状態の初期化
-    if 'active_tab' not in st.session_state:
-        st.session_state['active_tab'] = 'ホーム'
-    
-    if 'show_data' not in st.session_state:
-        st.session_state['show_data'] = False
-    
-    if 'show_stats' not in st.session_state:
-        st.session_state['show_stats'] = False
-    
-    if 'show_player_stats' not in st.session_state:
-        st.session_state['show_player_stats'] = False
+    # セッション状態の初期化とデータ読み込み
+    initialize_session_and_load_data()
     
     # メインコンテンツ - 3つのタブ
     tab1, tab2, tab3 = st.tabs(["ホーム", "スクショ解析", "手動入力"])
@@ -119,6 +109,49 @@ def main():
     
     with tab3:
         manual_input_tab()
+
+def initialize_session_and_load_data():
+    """セッション状態の初期化とGoogle Sheetsからのデータ読み込み"""
+    # セッション状態の初期化
+    default_states = {
+        'active_tab': 'ホーム',
+        'show_data': False,
+        'show_stats': False,
+        'show_player_stats': False,
+        'data_loaded': False
+    }
+    
+    for key, default_value in default_states.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+    
+    # Google Sheetsからのデータ読み込み（初回のみ）
+    if not st.session_state.get('data_loaded', False):
+        load_data_from_sheets()
+        st.session_state['data_loaded'] = True
+
+def load_data_from_sheets():
+    """Google Sheetsからデータを読み込み"""
+    from config_manager import ConfigManager
+    from ui_components import load_season_data
+    
+    try:
+        config_manager = ConfigManager()
+        current_season = config_manager.get_current_season()
+        
+        # 現在のシーズンのデータを読み込み
+        load_season_data(config_manager, current_season)
+        
+        # 読み込み結果を表示
+        if 'game_records' in st.session_state and st.session_state['game_records']:
+            record_count = len(st.session_state['game_records'])
+            st.success(f"Google Sheetsから {record_count} 件の記録を読み込みました")
+        
+    except Exception as e:
+        st.warning(f"データ読み込み中にエラーが発生: {e}")
+        # ローカルデータを初期化
+        if 'game_records' not in st.session_state:
+            st.session_state['game_records'] = []
 
 if __name__ == "__main__":
     main()

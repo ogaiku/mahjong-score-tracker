@@ -29,9 +29,24 @@ def setup_sidebar():
         if st.button("統計表示", use_container_width=True, key="sidebar_stats_btn"):
             st.session_state['show_stats'] = True
     
+    # データ同期ボタン
+    if st.sidebar.button("データ同期", use_container_width=True, help="Google Sheetsからデータを再読み込み"):
+        sync_data_from_sheets(config_manager)
+    
     # 記録数とダウンロード
     if 'game_records' in st.session_state and st.session_state['game_records']:
-        st.sidebar.metric("保存済み記録", f"{len(st.session_state['game_records'])}件")
+        record_count = len(st.session_state['game_records'])
+        st.sidebar.metric("保存済み記録", f"{record_count}件")
+        
+        # 保存状況の確認
+        sheets_status = check_sheets_sync_status(config_manager)
+        if sheets_status['configured']:
+            if sheets_status['can_connect']:
+                st.sidebar.success("Google Sheets連携: 有効")
+            else:
+                st.sidebar.error("Google Sheets連携: 接続エラー")
+        else:
+            st.sidebar.warning("Google Sheets連携: 未設定")
         
         df = pd.DataFrame(st.session_state['game_records'])
         csv_data = df.to_csv(index=False, encoding='utf-8-sig')
@@ -178,7 +193,63 @@ def initialize_new_season_data():
     if 'game_records' in st.session_state:
         del st.session_state['game_records']
 
+def sync_data_from_sheets(config_manager: ConfigManager):
+    """Google Sheetsからデータを手動同期"""
+    try:
+        current_season = config_manager.get_current_season()
+        
+        with st.sidebar:
+            with st.spinner("データを同期中..."):
+                load_season_data(config_manager, current_season)
+                
+                if 'game_records' in st.session_state and st.session_state['game_records']:
+                    record_count = len(st.session_state['game_records'])
+                    st.success(f"{record_count}件の記録を同期しました")
+                else:
+                    st.info("同期するデータがありませんでした")
+                
+    except Exception as e:
+        st.sidebar.error(f"同期エラー: {e}")
+
+def check_sheets_sync_status(config_manager: ConfigManager) -> dict:
+    """Google Sheets同期状況をチェック"""
+    try:
+        sheets_creds = config_manager.load_sheets_credentials()
+        spreadsheet_id = config_manager.get_spreadsheet_id()
+        
+        if not sheets_creds or not spreadsheet_id:
+            return {'configured': False, 'can_connect': False}
+        
+        # 接続テスト
+        sheet_manager = SpreadsheetManager(sheets_creds)
+        can_connect = sheet_manager.connect(spreadsheet_id)
+        
+        return {'configured': True, 'can_connect': can_connect}
+        
+    except Exception:
+        return {'configured': True, 'can_connect': False}
+
 def convert_sheets_records(sheets_records: list) -> list:
+    """Google Sheetsの記録をアプリ形式に変換"""
+    converted = []
+    for record in sheets_records:
+        converted_record = {
+            'date': record.get('対局日', ''),
+            'time': record.get('対局時刻', ''),
+            'game_type': record.get('対局タイプ', ''),
+            'player1_name': record.get('プレイヤー1名', ''),
+            'player1_score': record.get('プレイヤー1点数', 0),
+            'player2_name': record.get('プレイヤー2名', ''),
+            'player2_score': record.get('プレイヤー2点数', 0),
+            'player3_name': record.get('プレイヤー3名', ''),
+            'player3_score': record.get('プレイヤー3点数', 0),
+            'player4_name': record.get('プレイヤー4名', ''),
+            'player4_score': record.get('プレイヤー4点数', 0),
+            'notes': record.get('メモ', ''),
+            'timestamp': record.get('登録日時', '')
+        }
+        converted.append(converted_record)
+    return converted
     """Google Sheetsの記録をアプリ形式に変換"""
     converted = []
     for record in sheets_records:
@@ -307,9 +378,9 @@ def display_extraction_results():
 def save_game_record_with_names(players_data, game_date, game_time, game_type, notes):
     """対局記録を保存"""
     valid_players = [p for p in players_data if p['name'].strip()]
-    if len(valid_players) < 2:
-        st.error("最低2名のプレイヤー名を入力してください")
-        return
+    if len(valid_players) < 1:
+        st.error("少なくとも1名のプレイヤー名を入力してください")
+        return False
     
     game_data = {
         'date': game_date.strftime('%Y-%m-%d'),
@@ -332,10 +403,12 @@ def save_game_record_with_names(players_data, game_date, game_time, game_type, n
         st.session_state['game_records'] = []
     
     st.session_state['game_records'].append(game_data)
-    st.success("記録を保存しました")
     
-    # Google Sheets保存
+    # Google Sheets保存の試行
     config_manager = ConfigManager()
+    sheets_saved = False
+    sheets_error = None
+    
     if config_manager.get_auto_save_to_sheets():
         sheets_creds = config_manager.load_sheets_credentials()
         spreadsheet_id = config_manager.get_spreadsheet_id()
@@ -345,17 +418,29 @@ def save_game_record_with_names(players_data, game_date, game_time, game_type, n
                 sheet_manager = SpreadsheetManager(sheets_creds)
                 if sheet_manager.connect(spreadsheet_id):
                     if sheet_manager.add_record(game_data):
-                        current_season = config_manager.get_current_season()
-                        st.info(f"Google Sheets ({current_season}) にも保存しました")
+                        sheets_saved = True
+                    else:
+                        sheets_error = "記録の追加に失敗しました"
+                else:
+                    sheets_error = "スプレッドシートへの接続に失敗しました"
             except Exception as e:
-                st.warning(f"Google Sheets保存に失敗: {e}")
+                sheets_error = f"Google Sheets保存エラー: {str(e)}"
                 
+                # 権限エラーの詳細説明
                 if "403" in str(e) or "permission" in str(e).lower():
                     service_email = sheets_creds.get('client_email', 'N/A')
-                    st.markdown(f"""
-                    **権限エラーの解決方法:**
-                    1. スプレッドシートを開く
-                    2. 「共有」→ {service_email} を「編集者」として追加
-                    """)
+                    sheets_error += f"\n\n権限エラー: スプレッドシートを {service_email} と共有し、編集者権限を付与してください"
         else:
-            st.info("Google Sheets設定が不完全です（自動保存スキップ）")
+            sheets_error = "Google Sheets認証情報またはスプレッドシートIDが設定されていません"
+    
+    # 結果表示
+    if sheets_saved:
+        current_season = config_manager.get_current_season()
+        st.success(f"記録を保存しました")
+        st.info(f"Google Sheets ({current_season}) にも保存されました")
+        return True
+    else:
+        st.success(f"記録をローカルに保存しました")
+        if sheets_error:
+            st.warning(f"Google Sheets保存に失敗: {sheets_error}")
+        return True
