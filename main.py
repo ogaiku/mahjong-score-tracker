@@ -131,7 +131,7 @@ def initialize_session_and_load_data():
         st.session_state['data_loaded'] = True
 
 def load_data_from_sheets():
-    """Google Sheetsからデータを読み込み"""
+    """Google Sheetsからデータを読み込み（自動作成なし）"""
     from config_manager import ConfigManager
     from ui_components import load_season_data
     
@@ -139,19 +139,20 @@ def load_data_from_sheets():
         config_manager = ConfigManager()
         current_season = config_manager.get_current_season()
         
+        if not current_season:
+            # ローカルデータを初期化
+            if 'game_records' not in st.session_state:
+                st.session_state['game_records'] = []
+            return
+        
         # 現在のシーズンのデータを読み込み
         load_season_data(config_manager, current_season)
         
-        # 読み込み結果を表示
-        if 'game_records' in st.session_state and st.session_state['game_records']:
-            record_count = len(st.session_state['game_records'])
-            st.info(f"Google Sheetsから {record_count} 件の記録を読み込みました")
-        else:
-            st.info("Google Sheetsにデータがありません。新しい記録を追加してください。")
+        # ローカルデータを初期化
+        if 'game_records' not in st.session_state:
+            st.session_state['game_records'] = []
         
     except Exception as e:
-        st.warning(f"データ読み込み中にエラーが発生: {e}")
-        st.info("Google Sheets設定を確認してください")
         # ローカルデータを初期化
         if 'game_records' not in st.session_state:
             st.session_state['game_records'] = []

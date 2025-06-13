@@ -1,15 +1,20 @@
-# config_manager.py - Streamlit Secrets対応版
+# config_manager.py - セッション状態対応版
 import json
 import os
 from typing import Dict, Optional, Union
 import streamlit as st
 
 class ConfigManager:
-    """設定ファイルを管理するクラス（Streamlit Secrets対応）"""
+    """設定ファイルを管理するクラス（セッション状態対応）"""
     
     def __init__(self, config_file: str = "config.json"):
         self.config_file = config_file
-        self.config = self.load_config()
+        
+        # セッション状態で設定を管理
+        if 'config_data' not in st.session_state:
+            st.session_state['config_data'] = self.load_config()
+        
+        self.config = st.session_state['config_data']
     
     def load_config(self) -> Dict:
         """設定ファイルまたはStreamlit Secretsから設定を読み込み"""
@@ -33,13 +38,16 @@ class ConfigManager:
                 st.error(f"設定ファイル読み込みエラー: {e}")
                 return self.get_default_config()
         else:
-            # 設定ファイルが存在しない場合はデフォルト設定を作成
-            default_config = self.get_default_config()
-            self.save_config(default_config)
-            return default_config
+            return self.create_initial_setup()
+    
+    def create_initial_setup(self) -> Dict:
+        """初期設定（自動作成なし）"""
+        default_config = self.get_default_config()
+        self.save_config(default_config)
+        return default_config
     
     def load_from_secrets(self) -> Dict:
-        """Streamlit Secretsから設定を読み込み"""
+        """Streamlit Secretsから設定を読み込み（自動作成なし）"""
         try:
             config = {
                 "openai": {
@@ -52,14 +60,8 @@ class ConfigManager:
                 },
                 "google_sheets": {
                     "credentials_file": "",
-                    "seasons": {
-                        "season1": {
-                            "name": "mahjong-score-tracker season1",
-                            "spreadsheet_id": "1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ",
-                            "url": "https://docs.google.com/spreadsheets/d/1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ/edit?gid=0#gid=0"
-                        }
-                    },
-                    "current_season": "season1"
+                    "seasons": {},
+                    "current_season": ""
                 },
                 "app": {
                     "default_game_type": "四麻半荘",
@@ -74,7 +76,6 @@ class ConfigManager:
     
     def _needs_migration(self, config: Dict) -> bool:
         """設定の移行が必要かチェック"""
-        # 古い形式（直接spreadsheet_idがある）かチェック
         sheets_config = config.get("google_sheets", {})
         return "spreadsheet_id" in sheets_config and "seasons" not in sheets_config
     
@@ -84,7 +85,6 @@ class ConfigManager:
         old_spreadsheet_id = sheets_config.get("spreadsheet_id", "")
         
         if old_spreadsheet_id:
-            # 古いIDをseason1として移行
             sheets_config["seasons"] = {
                 "season1": {
                     "name": "mahjong-score-tracker season1",
@@ -93,13 +93,12 @@ class ConfigManager:
                 }
             }
             sheets_config["current_season"] = "season1"
-            # 古いキーを削除
             del sheets_config["spreadsheet_id"]
         
         return config
     
     def get_default_config(self) -> Dict:
-        """デフォルト設定を返す"""
+        """デフォルト設定を返す（空のシーズン設定）"""
         return {
             "openai": {
                 "api_key": "",
@@ -111,14 +110,8 @@ class ConfigManager:
             },
             "google_sheets": {
                 "credentials_file": "",
-                "seasons": {
-                    "season1": {
-                        "name": "mahjong-score-tracker season1",
-                        "spreadsheet_id": "1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ",
-                        "url": "https://docs.google.com/spreadsheets/d/1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ/edit?gid=0#gid=0"
-                    }
-                },
-                "current_season": "season1"
+                "seasons": {},
+                "current_season": ""
             },
             "app": {
                 "default_game_type": "四麻半荘",
@@ -127,13 +120,19 @@ class ConfigManager:
         }
     
     def save_config(self, config: Optional[Dict] = None) -> bool:
-        """設定ファイルを保存（Streamlit Cloud環境では無効）"""
-        # Streamlit Cloud環境では設定ファイルの保存は行わない
+        """設定を保存（セッション状態とファイル両方）"""
+        config_to_save = config if config is not None else self.config
+        
+        # セッション状態を更新
+        st.session_state['config_data'] = config_to_save
+        self.config = config_to_save
+        
+        # Streamlit Cloud環境ではファイル保存しない
         if hasattr(st, 'secrets') and len(st.secrets) > 0:
             return True
         
+        # ローカル環境ではファイルにも保存
         try:
-            config_to_save = config if config is not None else self.config
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_to_save, f, ensure_ascii=False, indent=2)
             return True
@@ -165,7 +164,7 @@ class ConfigManager:
     
     def get_current_season(self) -> str:
         """現在のシーズンを取得"""
-        return self.config.get("google_sheets", {}).get("current_season", "season1")
+        return self.config.get("google_sheets", {}).get("current_season", "")
     
     def get_all_seasons(self) -> Dict:
         """すべてのシーズン情報を取得"""
@@ -177,7 +176,7 @@ class ConfigManager:
         return seasons.get(season_key, {})
     
     def add_season(self, season_key: str, name: str, auto_create: bool = True) -> bool:
-        """新しいシーズンを追加（常に自動作成）"""
+        """新しいシーズンを追加（シーズン名でスプレッドシートを作成）"""
         try:
             # 既存のシーズンキーをチェック
             existing_seasons = self.get_all_seasons()
@@ -185,8 +184,9 @@ class ConfigManager:
                 st.error(f"シーズンキー '{season_key}' は既に存在します")
                 return False
             
-            # 自動でスプレッドシートを作成
-            result = self._create_new_spreadsheet(name)
+            # シーズン名をスプレッドシート名として使用
+            spreadsheet_name = name
+            result = self._create_new_spreadsheet(spreadsheet_name)
             if result['success']:
                 spreadsheet_id = result['spreadsheet_id']
                 url = result['url']
@@ -207,10 +207,26 @@ class ConfigManager:
                 "created_at": self._get_current_timestamp()
             }
             
+            # 初回シーズンの場合は現在のシーズンに設定
+            current_season = self.get_current_season()
+            if not current_season:
+                self.config["google_sheets"]["current_season"] = season_key
+            
+            # 設定を保存
             return self.save_config()
         except Exception as e:
             st.error(f"シーズン追加エラー: {e}")
             return False
+    
+    def ensure_default_season_exists(self) -> bool:
+        """デフォルトシーズンチェック（自動作成なし）"""
+        current_season = self.get_current_season()
+        seasons = self.get_all_seasons()
+        
+        if not current_season or current_season not in seasons:
+            return False
+        
+        return True
     
     def _create_new_spreadsheet(self, title: str) -> Dict:
         """新しいスプレッドシートを自動作成（公開設定）"""
@@ -303,6 +319,7 @@ class ConfigManager:
                 "メモ", "登録日時"
             ]
             
+            # ヘッダー行を追加
             body = {
                 'values': [headers]
             }
@@ -314,36 +331,52 @@ class ConfigManager:
                 body=body
             ).execute()
             
-            # ヘッダー行のフォーマット設定
-            format_body = {
-                'requests': [{
-                    'repeatCell': {
-                        'range': {
-                            'sheetId': 0,
-                            'startRowIndex': 0,
-                            'endRowIndex': 1
-                        },
-                        'cell': {
-                            'userEnteredFormat': {
-                                'backgroundColor': {
-                                    'red': 0.9,
-                                    'green': 0.9,
-                                    'blue': 0.9
-                                },
-                                'textFormat': {
-                                    'bold': True
+            # スプレッドシートの詳細情報を取得して正しいシートIDを取得
+            try:
+                spreadsheet = sheets_service.spreadsheets().get(
+                    spreadsheetId=spreadsheet_id
+                ).execute()
+                
+                # 最初のシートのIDを取得
+                sheet_id = spreadsheet['sheets'][0]['properties']['sheetId']
+                
+                # ヘッダー行のフォーマット設定
+                format_body = {
+                    'requests': [{
+                        'repeatCell': {
+                            'range': {
+                                'sheetId': sheet_id,
+                                'startRowIndex': 0,
+                                'endRowIndex': 1
+                            },
+                            'cell': {
+                                'userEnteredFormat': {
+                                    'backgroundColor': {
+                                        'red': 0.9,
+                                        'green': 0.9,
+                                        'blue': 0.9
+                                    },
+                                    'textFormat': {
+                                        'bold': True
+                                    }
                                 }
-                            }
-                        },
-                        'fields': 'userEnteredFormat(backgroundColor,textFormat)'
-                    }
-                }]
-            }
-            
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body=format_body
-            ).execute()
+                            },
+                            'fields': 'userEnteredFormat(backgroundColor,textFormat)'
+                        }
+                    }]
+                }
+                
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body=format_body
+                ).execute()
+                
+            except Exception as format_error:
+                # フォーマット設定に失敗してもヘッダーは追加されているので警告のみ
+                return {
+                    'success': True,
+                    'warning': f"ヘッダー追加は成功しましたが、フォーマット設定に失敗: {format_error}"
+                }
             
             return {'success': True}
             
@@ -362,13 +395,7 @@ class ConfigManager:
                 return False
             
             self.config.setdefault("google_sheets", {})["current_season"] = season_key
-            success = self.save_config()
-            
-            if success:
-                # 設定を再読み込み
-                self.config = self.load_config()
-            
-            return success
+            return self.save_config()
         except Exception as e:
             st.error(f"シーズン変更エラー: {e}")
             return False
@@ -397,7 +424,6 @@ class ConfigManager:
     def extract_spreadsheet_id(self, url: str) -> str:
         """スプレッドシートURLからIDを抽出"""
         import re
-        # https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/ のパターン
         pattern = r'/spreadsheets/d/([a-zA-Z0-9-_]+)'
         match = re.search(pattern, url)
         return match.group(1) if match else ""
@@ -472,7 +498,7 @@ class ConfigManager:
     
     def get_default_game_type(self) -> str:
         """デフォルトの対局タイプを取得"""
-        return self.config.get("app", {}).get("default_game_type", "四麻東風")
+        return self.config.get("app", {}).get("default_game_type", "四麻半荘")
     
     def update_config(self, section: str, key: str, value) -> bool:
         """設定を更新"""
@@ -556,19 +582,8 @@ def create_config_template():
         },
         "google_sheets": {
             "credentials_file": "sheets_credentials.json",
-            "seasons": {
-                "season1": {
-                    "name": "mahjong-score-tracker season1",
-                    "spreadsheet_id": "1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ",
-                    "url": "https://docs.google.com/spreadsheets/d/1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ/edit?gid=0#gid=0"
-                },
-                "season2": {
-                    "name": "mahjong-score-tracker season2",
-                    "spreadsheet_id": "your-season2-spreadsheet-id",
-                    "url": "https://docs.google.com/spreadsheets/d/your-season2-spreadsheet-id/edit"
-                }
-            },
-            "current_season": "season1"
+            "seasons": {},
+            "current_season": ""
         },
         "app": {
             "default_game_type": "四麻半荘",
