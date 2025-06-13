@@ -301,31 +301,6 @@ def display_extraction_results():
         return
     
     st.success("解析完了")
-    
-    players = result.get('players', [])
-    
-    if any(player.get('nickname', '').strip() for player in players):
-        st.subheader("抽出されたプレイヤー情報")
-        
-        player_data = []
-        for i, player in enumerate(players):
-            nickname = player.get('nickname', '')
-            score = player.get('score', 25000)
-            
-            if nickname.strip():
-                player_data.append({
-                    'プレイヤー': f"Player {i+1}",
-                    'ニックネーム': nickname,
-                    '点数': f"{score:,}点"
-                })
-        
-        if player_data:
-            player_df = pd.DataFrame(player_data)
-            st.dataframe(player_df, use_container_width=True, hide_index=True)
-        else:
-            st.warning("有効なプレイヤー情報が抽出できませんでした")
-    else:
-        st.warning("プレイヤー情報が抽出できませんでした")
 
 def save_game_record_with_names(players_data, game_date, game_time, game_type, notes):
     """対局記録をGoogle Sheetsに保存"""

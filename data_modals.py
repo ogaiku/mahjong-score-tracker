@@ -38,8 +38,27 @@ def show_data_modal():
         # データ表示
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         
+        # データ削除に関する説明
+        with st.expander("データの編集・削除について"):
+            st.markdown("""
+            **データの削除方法**:
+            1. Google Sheetsを直接開く（サイドバーのシーズン管理から確認可能）
+            2. 削除したい行を選択して右クリック → 「行を削除」
+            3. このアプリで「データ同期」ボタンを押して更新
+            
+            **データの編集方法**:
+            1. Google Sheetsで直接セルを編集
+            2. このアプリで「データ同期」ボタンを押して更新
+            
+            **注意**: 
+            - Google Sheetsでの変更は即座にアプリに反映されません
+            - 変更後は必ず「データ同期」を実行してください
+            - ヘッダー行（1行目）は削除しないでください
+            """)
+        
+        
         # ボタン
-        col1, col2, col3 = st.columns([1, 1, 2])
+        col1, col2 = st.columns([1, 1])
         
         with col1:
             if st.button("閉じる", use_container_width=True, key="close_data_modal_btn"):
@@ -47,23 +66,13 @@ def show_data_modal():
                 st.rerun()
         
         with col2:
-            if st.button("全削除", type="secondary", use_container_width=True, key="delete_all_data_btn"):
-                if 'delete_confirm' not in st.session_state:
-                    st.session_state['delete_confirm'] = False
-                
-                if not st.session_state['delete_confirm']:
-                    st.session_state['delete_confirm'] = True
-                    st.rerun()
-                else:
-                    del st.session_state['game_records']
-                    st.session_state['show_data'] = False
-                    st.session_state['delete_confirm'] = False
-                    st.success("全記録を削除しました")
-                    st.rerun()
-        
-        with col3:
-            if st.session_state.get('delete_confirm', False):
-                st.warning("もう一度「全削除」ボタンを押してください")
+            # データ同期ボタンを追加
+            if st.button("データ同期", use_container_width=True, key="modal_sync_btn", help="Google Sheetsから最新データを読み込み"):
+                from config_manager import ConfigManager
+                from ui_components import sync_data_from_sheets
+                config_manager = ConfigManager()
+                sync_data_from_sheets(config_manager)
+                st.rerun()
         
     else:
         st.info("表示する記録がありません")
