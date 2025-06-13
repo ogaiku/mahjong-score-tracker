@@ -84,13 +84,13 @@ def home_tab():
                 if stats['total_games'] >= 3:
                     player_stats.append({
                         'プレイヤー': player,
-                        '平均点数': stats['avg_score'],
+                        '平均スコア': stats['avg_score'],  # 新しいスコア計算
                         '対局数': stats['total_games'],
                         '1位率': stats['win_rate']
                     })
             
             if player_stats:
-                player_stats.sort(key=lambda x: x['平均点数'], reverse=True)
+                player_stats.sort(key=lambda x: x['平均スコア'], reverse=True)
                 top_players = player_stats[:5]
                 
                 top_cols = st.columns(min(len(top_players), 5))
@@ -99,11 +99,25 @@ def home_tab():
                         rank = i + 1
                         st.metric(
                             label=f"{rank}位: {player_data['プレイヤー']}",
-                            value=f"{player_data['平均点数']:,.0f}点",
+                            value=f"{player_data['平均スコア']:+.1f}pt",  # 新しいスコア表示
                             delta=f"1位率: {player_data['1位率']:.1f}%"
                         )
             else:
                 st.info("3回以上対局したプレイヤーがいません")
+            
+            # スコア計算の説明を追加
+            with st.expander("スコア計算について"):
+                from scoring_config import SCORING_EXPLANATION
+                st.markdown(f"""
+                **計算式**: {SCORING_EXPLANATION['formula']}
+                
+                **詳細**:
+                - {SCORING_EXPLANATION['uma_4_player']}
+                - {SCORING_EXPLANATION['uma_3_player']}
+                - {SCORING_EXPLANATION['participation']}
+                - {SCORING_EXPLANATION['starting_points']}
+                """)
+        
         
         # データ操作メニュー
         st.divider()

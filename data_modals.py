@@ -72,7 +72,7 @@ def show_data_modal():
             st.rerun()
 
 def show_statistics_modal():
-    """統計表示モーダル"""
+    """統計表示モーダル（新スコア対応）"""
     st.subheader("統計分析")
     
     if 'game_records' in st.session_state and st.session_state['game_records']:
@@ -100,10 +100,10 @@ def show_statistics_modal():
         
         with col4:
             if all_players:
-                # 最高平均点数のプレイヤー
+                # 最高平均スコアのプレイヤー（新スコア）
                 best_avg = max(all_players, key=lambda p: player_manager.get_player_statistics(p)['avg_score'])
                 best_avg_score = player_manager.get_player_statistics(best_avg)['avg_score']
-                st.metric("最高平均", f"{best_avg}", f"{best_avg_score:,.0f}点")
+                st.metric("最高平均スコア", f"{best_avg}", f"{best_avg_score:+.1f}pt")
         
         # プレイヤー別詳細統計
         st.subheader("プレイヤー別詳細統計")
@@ -116,16 +116,30 @@ def show_statistics_modal():
                     player_stats.append({
                         'プレイヤー': player_name,
                         '対局数': f"{stats['total_games']}回",
-                        '平均点数': f"{stats['avg_score']:,.0f}点",
+                        '平均スコア': f"{stats['avg_score']:+.2f}pt",  # 新スコア
+                        '平均点棒': f"{stats['avg_raw_score']:,.0f}点",  # 従来の点棒
                         '平均順位': f"{stats['avg_rank']:.2f}位",
                         '1位率': f"{stats['win_rate']:.1f}%",
-                        '最高点数': f"{stats['max_score']:,.0f}点",
-                        '最低点数': f"{stats['min_score']:,.0f}点"
+                        '最高点棒': f"{stats['max_score']:,.0f}点",
+                        '最低点棒': f"{stats['min_score']:,.0f}点"
                     })
             
             if player_stats:
                 stats_df = pd.DataFrame(player_stats)
                 st.dataframe(stats_df, use_container_width=True, hide_index=True)
+                
+                # スコア計算説明
+                with st.expander("スコア計算について"):
+                    from scoring_config import SCORING_EXPLANATION
+                    st.markdown(f"""
+                    **計算式**: {SCORING_EXPLANATION['formula']}
+                    
+                    **詳細**:
+                    - {SCORING_EXPLANATION['uma_4_player']}
+                    - {SCORING_EXPLANATION['uma_3_player']}
+                    - {SCORING_EXPLANATION['participation']}
+                    - {SCORING_EXPLANATION['starting_points']}
+                    """)
             else:
                 st.info("統計データがありません")
         else:

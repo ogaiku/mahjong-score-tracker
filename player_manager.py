@@ -2,6 +2,7 @@
 import pandas as pd
 from typing import Dict, List, Optional
 from collections import defaultdict
+from scoring_config import calculate_game_score, get_player_count_from_game_type
 
 class PlayerManager:
     def __init__(self, game_records: List[Dict]):
@@ -66,6 +67,25 @@ class PlayerManager:
         sorted_scores = sorted(all_scores, reverse=True)
         return sorted_scores.index(player_score) + 1
     
+    def calculate_player_game_score(self, record: Dict, player_name: str) -> float:
+        """新しいスコア計算方式でゲームスコアを計算"""
+        # プレイヤーの最終点棒
+        final_points = float(record['score'])
+        
+        # ゲームタイプ
+        game_type = record.get('game_type', '四麻半荘')
+        
+        # 参加人数を判定
+        player_count = get_player_count_from_game_type(game_type)
+        
+        # 順位を計算
+        rank = self.calculate_player_rank(final_points, record['other_players'])
+        
+        # 新しいスコア計算
+        game_score = calculate_game_score(final_points, game_type, rank, player_count)
+        
+        return game_score
+    
     def get_player_statistics(self, player_name: str) -> Dict:
         records = self.get_player_records(player_name)
         
@@ -74,6 +94,7 @@ class PlayerManager:
                 'name': player_name,
                 'total_games': 0,
                 'avg_score': 0,
+                'avg_raw_score': 0,  # 従来の平均点棒
                 'total_score': 0,
                 'max_score': 0,
                 'min_score': 0,
@@ -83,10 +104,19 @@ class PlayerManager:
                 'records': []
             }
         
-        scores = [float(record['score']) for record in records]
+        # 従来の点棒ベーススコア
+        raw_scores = [float(record['score']) for record in records]
+        
+        # 新しいゲームスコア
+        game_scores = []
         ranks = []
         
         for record in records:
+            # 新しいスコア計算
+            game_score = self.calculate_player_game_score(record, player_name)
+            game_scores.append(game_score)
+            
+            # 順位計算
             rank = self.calculate_player_rank(
                 float(record['score']), 
                 record['other_players']
@@ -100,10 +130,11 @@ class PlayerManager:
         return {
             'name': player_name,
             'total_games': len(records),
-            'avg_score': sum(scores) / len(scores) if scores else 0,
-            'total_score': sum(scores),
-            'max_score': max(scores) if scores else 0,
-            'min_score': min(scores) if scores else 0,
+            'avg_score': sum(game_scores) / len(game_scores) if game_scores else 0,  # 新しいスコアの平均
+            'avg_raw_score': sum(raw_scores) / len(raw_scores) if raw_scores else 0,  # 従来の平均点棒
+            'total_score': sum(game_scores),
+            'max_score': max(raw_scores) if raw_scores else 0,
+            'min_score': min(raw_scores) if raw_scores else 0,
             'rank_distribution': rank_distribution,
             'avg_rank': sum(ranks) / len(ranks) if ranks else 0,
             'win_rate': (rank_distribution[1] / len(records) * 100) if records else 0,
@@ -123,16 +154,18 @@ class PlayerManager:
                 ranking_data.append({
                     'プレイヤー名': player_name,
                     '対局数': stats['total_games'],
-                    '平均点数': round(stats['avg_score'], 1),
+                    '平均スコア': round(stats['avg_score'], 2),  # 新しいスコア
+                    '平均点棒': round(stats['avg_raw_score'], 1),  # 従来の点棒
                     '平均順位': round(stats['avg_rank'], 2),
                     '1位率': f"{stats['win_rate']:.1f}%",
-                    '最高点数': int(stats['max_score']),
-                    '最低点数': int(stats['min_score'])
+                    '最高点棒': int(stats['max_score']),
+                    '最低点棒': int(stats['min_score'])
                 })
         
         df = pd.DataFrame(ranking_data)
         if not df.empty:
-            df = df.sort_values('平均点数', ascending=False).reset_index(drop=True)
+            # 新しいスコアでソート
+            df = df.sort_values('平均スコア', ascending=False).reset_index(drop=True)
             df.index = df.index + 1
         
         return df
