@@ -1,4 +1,4 @@
-# score_extractor.py - Streamlit Cloud対応版
+# score_extractor.py - Streamlit Cloud対応版（スピナー修正）
 import numpy as np
 import re
 import json
@@ -243,11 +243,10 @@ class MahjongScoreExtractor:
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     
     def analyze_image(self, image: np.ndarray) -> Dict:
-        """メイン解析関数"""
+        """メイン解析関数（スピナーなし版）"""
         try:
             # Step 1: Google Vision APIでテキスト抽出
-            with st.spinner("画像からテキストを抽出中..."):
-                extracted_text = self.extract_text_with_vision_api(image)
+            extracted_text = self.extract_text_with_vision_api(image)
             
             if not extracted_text.strip():
                 return {
@@ -259,12 +258,10 @@ class MahjongScoreExtractor:
                 }
             
             # Step 2: 画像をBase64エンコード
-            with st.spinner("画像を処理中..."):
-                image_base64 = self.image_to_base64(image)
+            image_base64 = self.image_to_base64(image)
             
             # Step 3: ChatGPT APIで解析
-            with st.spinner("AIが画像を解析中..."):
-                ai_result = self.analyze_with_chatgpt(extracted_text, image_base64)
+            ai_result = self.analyze_with_chatgpt(extracted_text, image_base64)
             
             # プレイヤーデータが4名未満の場合は空データで埋める
             players = ai_result.get('players', [])
@@ -285,7 +282,6 @@ class MahjongScoreExtractor:
             
         except Exception as e:
             error_message = str(e)
-            st.error(f"解析エラー: {error_message}")
             
             return {
                 'success': False,

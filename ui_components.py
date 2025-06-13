@@ -1,4 +1,4 @@
-# ui_components.py - 基本UI部品とサイドバー管理
+# ui_components.py - 基本UI部品とサイドバー管理（修正版）
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -75,6 +75,7 @@ def display_config_status(config_manager: ConfigManager):
         if len(seasons) > 1:
             season_options = {key: info.get('name', key) for key, info in seasons.items()}
             
+            # セッション状態の初期化
             if 'current_season_key' not in st.session_state:
                 st.session_state['current_season_key'] = current_season
             
@@ -86,6 +87,7 @@ def display_config_status(config_manager: ConfigManager):
                 key="season_selector"
             )
             
+            # シーズンが変更された場合の処理
             if selected_season != st.session_state['current_season_key']:
                 if switch_season(config_manager, selected_season):
                     st.session_state['current_season_key'] = selected_season
@@ -118,35 +120,65 @@ def display_config_status(config_manager: ConfigManager):
         
         # 既存シーズン管理
         if has_seasons:
+            st.caption("既存シーズン一覧")
             seasons = status['seasons']
+            current_season = status['current_season']
+            
             for key, info in seasons.items():
-                is_current = (key == status['current_season'])
+                is_current = (key == current_season)
                 marker = " (現在)" if is_current else ""
                 
-                col1, col2, col3 = st.columns([2, 1, 1])
-                with col1:
-                    st.caption(f"{key}{marker}")
-                with col2:
-                    if not is_current and st.button("選択", key=f"select_{key}"):
-                        if switch_season(config_manager, key):
-                            st.session_state['current_season_key'] = key
-                            load_season_data(config_manager, key)
-                            st.rerun()
-                with col3:
-                    if not is_current and st.button("削除", key=f"delete_{key}"):
-                        if config_manager.delete_season(key):
-                            st.success(f"シーズン {key} を削除")
-                            st.rerun()
+                with st.container():
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.text(f"{key}{marker}")
+                        if info.get('name'):
+                            st.caption(info['name'])
+                    
+                    with col2:
+                        if not is_current:
+                            # 一意のキーを使用してボタンを作成
+                            button_key = f"season_action_{key}_{len(seasons)}"
+                            
+                            if st.button("選択", key=f"select_{button_key}", use_container_width=True):
+                                with st.spinner(f"シーズン {key} に切り替え中..."):
+                                    if switch_season(config_manager, key):
+                                        st.session_state['current_season_key'] = key
+                                        load_season_data(config_manager, key)
+                                        st.success(f"シーズン {key} に切り替えました")
+                                        st.rerun()
+                            
+                            if st.button("削除", key=f"delete_{button_key}", use_container_width=True):
+                                if st.session_state.get(f"confirm_delete_{key}", False):
+                                    # 削除実行
+                                    if config_manager.delete_season(key):
+                                        st.success(f"シーズン {key} を削除しました")
+                                        # 確認フラグをクリア
+                                        if f"confirm_delete_{key}" in st.session_state:
+                                            del st.session_state[f"confirm_delete_{key}"]
+                                        st.rerun()
+                                    else:
+                                        st.error("削除に失敗しました")
+                                else:
+                                    # 削除確認
+                                    st.session_state[f"confirm_delete_{key}"] = True
+                                    st.warning(f"シーズン {key} を削除しますか？もう一度「削除」ボタンを押してください")
+                        else:
+                            st.caption("現在使用中")
+                    
+                    st.divider()
 
 def create_new_season(config_manager: ConfigManager, season_name: str) -> bool:
     """新しいシーズンを作成"""
     try:
         spreadsheet_name = f"mahjong-score-tracker-{season_name}"
         
-        if config_manager.add_season(season_name, spreadsheet_name, auto_create=True):
-            if config_manager.set_current_season(season_name):
-                initialize_new_season_data()
-                return True
+        with st.spinner(f"シーズン {season_name} を作成中..."):
+            if config_manager.add_season(season_name, spreadsheet_name, auto_create=True):
+                if config_manager.set_current_season(season_name):
+                    initialize_new_season_data()
+                    return True
         return False
     except Exception as e:
         st.error(f"シーズン作成エラー: {e}")
@@ -163,6 +195,7 @@ def switch_season(config_manager: ConfigManager, season_key: str) -> bool:
 def load_season_data(config_manager: ConfigManager, season_key: str):
     """シーズンデータを読み込み"""
     try:
+        # 現在のデータをクリア
         if 'game_records' in st.session_state:
             del st.session_state['game_records']
         
@@ -177,15 +210,22 @@ def load_season_data(config_manager: ConfigManager, season_key: str):
                     if records:
                         converted_records = convert_sheets_records(records)
                         st.session_state['game_records'] = converted_records
+                    else:
+                        st.session_state['game_records'] = []
+                else:
+                    st.session_state['game_records'] = []
             except Exception as e:
                 st.warning(f"データ読み込み失敗: {e}")
+                st.session_state['game_records'] = []
+        else:
+            st.session_state['game_records'] = []
     except Exception as e:
         st.error(f"データ読み込みエラー: {e}")
+        st.session_state['game_records'] = []
 
 def initialize_new_season_data():
     """新シーズンのデータを初期化"""
-    if 'game_records' in st.session_state:
-        del st.session_state['game_records']
+    st.session_state['game_records'] = []
 
 def sync_data_from_sheets(config_manager: ConfigManager):
     """Google Sheetsからデータを手動同期"""
@@ -266,6 +306,7 @@ def extract_data_from_image(image):
         st.error("Google Vision APIの認証情報が設定されていません")
         return
     
+    # スピナーはここで1つだけ表示
     with st.spinner("AI解析中..."):
         try:
             extractor = MahjongScoreExtractor(
