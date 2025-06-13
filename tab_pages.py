@@ -88,9 +88,23 @@ def display_recent_records(records):
 def screenshot_upload_tab():
     st.header("スクリーンショット解析")
     
+    # フォーム送信後のクリア処理（最初にチェック）
+    if st.session_state.get('clear_screenshot', False):
+        st.session_state['clear_screenshot'] = False
+        st.session_state['analysis_result'] = None
+        # ファイルアップローダーをクリアするためにキーを変更
+        if 'file_uploader_key' not in st.session_state:
+            st.session_state['file_uploader_key'] = 0
+        st.session_state['file_uploader_key'] += 1
+        st.rerun()
+    
+    # ファイルアップローダーのキー
+    uploader_key = st.session_state.get('file_uploader_key', 0)
+    
     uploaded_file = st.file_uploader(
         "画像ファイルを選択",
-        type=['png', 'jpg', 'jpeg']
+        type=['png', 'jpg', 'jpeg'],
+        key=f"file_uploader_{uploader_key}"
     )
     
     if uploaded_file is not None:
@@ -136,11 +150,7 @@ def create_extraction_form():
     
     st.subheader("データ確認・修正")
     
-    # フォーム送信後のクリア処理
-    if st.session_state.get('extraction_form_submitted', False):
-        st.session_state['extraction_form_submitted'] = False
-        st.session_state['analysis_result'] = None  # 解析結果もクリア
-        st.rerun()
+    # フォーム送信後のクリア処理（削除）
     
     with st.form("extraction_form", clear_on_submit=True):
         # 解析結果のニックネームをデフォルト値として設定
@@ -161,7 +171,7 @@ def create_extraction_form():
         
         if submitted and is_valid:
             if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                st.session_state['extraction_form_submitted'] = True
+                st.session_state['clear_screenshot'] = True
                 st.rerun()
 
 def manual_input_tab():
