@@ -21,3 +21,4 @@ __pycache__/
 .streamlit/
 .streamlit/secrets.toml
 .streamlit/
+.streamlit/secrets.toml
