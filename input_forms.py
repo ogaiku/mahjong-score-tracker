@@ -225,6 +225,8 @@ def create_score_input_fields(player_names, default_scores=None, prefix="default
 
 def create_game_info_fields(prefix="default"):
     """対局情報入力フィールド"""
+    from config_manager import ConfigManager
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -234,7 +236,13 @@ def create_game_info_fields(prefix="default"):
         game_time = st.time_input("対局時刻", key=f"{prefix}_time")
     
     with col3:
-        game_type = st.selectbox("対局タイプ", ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"], key=f"{prefix}_game_type")
+        # デフォルト値を設定から取得
+        config_manager = ConfigManager()
+        default_game_type = config_manager.get_default_game_type()
+        game_types = ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"]
+        default_index = game_types.index(default_game_type) if default_game_type in game_types else 1  # 四麻半荘をデフォルト
+        
+        game_type = st.selectbox("対局タイプ", game_types, index=default_index, key=f"{prefix}_game_type")
     
     return game_date, game_time, game_type
 

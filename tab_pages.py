@@ -109,20 +109,25 @@ def screenshot_upload_tab():
         with col2:
             st.subheader("解析結果")
             
-            if 'analysis_result' in st.session_state:
+            if 'analysis_result' in st.session_state and st.session_state['analysis_result'] is not None:
                 display_extraction_results()
             else:
                 st.info("解析開始ボタンを押してください")
     
-    if 'analysis_result' in st.session_state:
+    if 'analysis_result' in st.session_state and st.session_state['analysis_result'] is not None:
         st.divider()
         create_extraction_form()
 
 def create_extraction_form():
+    # analysis_resultがNoneまたは存在しない場合は何も表示しない
+    if ('analysis_result' not in st.session_state or 
+        st.session_state['analysis_result'] is None):
+        return
+    
     result = st.session_state['analysis_result']
     
-    if not result.get('success', False):
-        st.warning("解析結果がありません")
+    # resultがNoneの場合も早期リターン
+    if result is None or not result.get('success', False):
         return
     
     players = result.get('players', [])
