@@ -1,4 +1,4 @@
-# tab_pages.py (simplified)
+# tab_pages.py (修正版)
 import streamlit as st
 import pandas as pd
 from PIL import Image
@@ -88,59 +88,61 @@ def display_recent_records(records):
 def screenshot_upload_tab():
     st.header("スクリーンショット解析")
     
-    # フォーム送信後のクリア処理（最初にチェック）
-    if st.session_state.get('clear_screenshot', False):
-        st.session_state['clear_screenshot'] = False
+    # セッション状態の初期化
+    if 'file_uploader_key' not in st.session_state:
+        st.session_state['file_uploader_key'] = 0
+    
+    # 解析結果の初期化（ページ読み込み時のみ）
+    if 'analysis_result' not in st.session_state:
         st.session_state['analysis_result'] = None
-        # ファイルアップローダーをクリアするためにキーを変更
-        if 'file_uploader_key' not in st.session_state:
-            st.session_state['file_uploader_key'] = 0
-        st.session_state['file_uploader_key'] += 1
-        st.rerun()
     
-    # ファイルアップローダーのキー
-    uploader_key = st.session_state.get('file_uploader_key', 0)
-    
+    # ファイルアップローダー
+    uploader_key = f"file_uploader_{st.session_state['file_uploader_key']}"
     uploaded_file = st.file_uploader(
         "画像ファイルを選択",
         type=['png', 'jpg', 'jpeg'],
-        key=f"file_uploader_{uploader_key}"
+        key=uploader_key
     )
     
     if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            st.subheader("アップロード画像")
-            st.image(image, use_container_width=True)
+        try:
+            image = Image.open(uploaded_file)
             
-            if st.button("解析開始", type="primary", use_container_width=True):
-                extract_data_from_image(image)
-                st.rerun()
-        
-        with col2:
-            st.subheader("解析結果")
+            col1, col2 = st.columns([1, 1])
             
-            if 'analysis_result' in st.session_state and st.session_state['analysis_result'] is not None:
-                display_extraction_results()
-            else:
-                st.info("解析開始ボタンを押してください")
+            with col1:
+                st.subheader("アップロード画像")
+                st.image(image, use_container_width=True)
+                
+                if st.button("解析開始", type="primary", use_container_width=True):
+                    extract_data_from_image(image)
+                    st.rerun()
+            
+            with col2:
+                st.subheader("解析結果")
+                
+                if (st.session_state.get('analysis_result') is not None and 
+                    st.session_state['analysis_result'].get('success', False)):
+                    display_extraction_results()
+                elif st.session_state.get('analysis_result') is not None:
+                    result = st.session_state['analysis_result']
+                    st.error(result.get('message', '解析に失敗しました'))
+                else:
+                    st.info("解析開始ボタンを押してください")
+        
+        except Exception as e:
+            st.error(f"画像の読み込みに失敗しました: {e}")
     
-    if 'analysis_result' in st.session_state and st.session_state['analysis_result'] is not None:
+    if (st.session_state.get('analysis_result') is not None and 
+        st.session_state['analysis_result'].get('success', False)):
+        
         st.divider()
         create_extraction_form()
 
 def create_extraction_form():
-    # analysis_resultがNoneまたは存在しない場合は何も表示しない
-    if ('analysis_result' not in st.session_state or 
-        st.session_state['analysis_result'] is None):
-        return
-    
+    """解析結果からの入力フォーム"""
     result = st.session_state['analysis_result']
     
-    # resultがNoneの場合も早期リターン
     if result is None or not result.get('success', False):
         return
     
@@ -150,37 +152,77 @@ def create_extraction_form():
     
     st.subheader("データ確認・修正")
     
-    # フォーム送信後のクリア処理（削除）
+    form_key = "screenshot_extraction_form"
     
-    with st.form("extraction_form", clear_on_submit=True):
-        # 解析結果のニックネームをデフォルト値として設定
+    with st.form(form_key, clear_on_submit=False):
         extracted_names = [player.get('nickname', '') for player in players]
         player_names = create_player_input_fields_with_defaults("extraction", extracted_names)
         
-        # 解析結果をデフォルト値として使用
         default_scores = [int(player.get('score', 25000)) for player in players]
         scores = create_score_input_fields(player_names, default_scores, "extraction")
         
         game_date, game_time, game_type = create_game_info_fields("extraction")
-        notes = st.text_area("メモ", placeholder="特記事項")
+        notes = st.text_area("メモ", placeholder="特記事項", key="extraction_notes")
         
         st.subheader("入力内容確認")
         is_valid = show_input_confirmation(player_names, scores)
         
-        submitted = st.form_submit_button("記録を保存", type="primary", use_container_width=True)
+        col1, col2, col3 = st.columns([1, 1, 1])
+        
+        with col1:
+            submitted = st.form_submit_button(
+                "記録を保存", 
+                type="primary", 
+                use_container_width=True,
+                disabled=not is_valid
+            )
+        
+        with col2:
+            if st.form_submit_button("再解析", use_container_width=True):
+                st.session_state['analysis_result'] = None
+                st.rerun()
+        
+        with col3:
+            if st.form_submit_button("クリア", use_container_width=True):
+                clear_screenshot_form()
+                st.rerun()
         
         if submitted and is_valid:
-            if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                st.session_state['clear_screenshot'] = True
-                st.rerun()
+            try:
+                success = save_game_record(player_names, scores, game_date, game_time, game_type, notes)
+                if success:
+                    st.success("記録を保存しました")
+                    clear_screenshot_form()
+                    st.rerun()
+                else:
+                    st.error("記録の保存に失敗しました")
+            
+            except Exception as e:
+                st.error(f"エラーが発生しました: {e}")
+
+def clear_screenshot_form():
+    """スクリーンショットフォームをクリア"""
+    # 解析結果をクリア
+    st.session_state['analysis_result'] = None
+    
+    # ファイルアップローダーをクリア
+    st.session_state['file_uploader_key'] += 1
+    
+    # フォーム関連のセッション状態をクリア
+    keys_to_clear = [
+        key for key in st.session_state.keys() 
+        if key.startswith('extraction_')
+    ]
+    
+    for key in keys_to_clear:
+        del st.session_state[key]
 
 def manual_input_tab():
     st.header("手動データ入力")
     
-    # フォーム送信後のクリア処理
-    if st.session_state.get('manual_form_submitted', False):
-        st.session_state['manual_form_submitted'] = False
-        st.rerun()
+    if st.session_state.get('manual_form_success', False):
+        st.success("記録を保存しました")
+        st.session_state['manual_form_success'] = False
     
     with st.form("manual_input_form", clear_on_submit=True):
         st.subheader("プレイヤー情報")
@@ -196,9 +238,21 @@ def manual_input_tab():
         st.subheader("入力内容確認")
         is_valid = show_input_confirmation(player_names, scores)
         
-        submitted = st.form_submit_button("記録を保存", type="primary", use_container_width=True)
+        submitted = st.form_submit_button(
+            "記録を保存", 
+            type="primary", 
+            use_container_width=True,
+            disabled=not is_valid
+        )
         
         if submitted and is_valid:
-            if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                st.session_state['manual_form_submitted'] = True
-                st.rerun()
+            try:
+                success = save_game_record(player_names, scores, game_date, game_time, game_type, notes)
+                if success:
+                    st.session_state['manual_form_success'] = True
+                    st.rerun()
+                else:
+                    st.error("記録の保存に失敗しました")
+            
+            except Exception as e:
+                st.error(f"エラーが発生しました: {e}")
