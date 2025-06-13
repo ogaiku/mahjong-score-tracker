@@ -30,7 +30,7 @@ def create_player_input_fields(prefix="default"):
                 
                 if input_type == "既存選択":
                     selected_player = st.selectbox(
-                        "選択",
+                        "プレイヤーを選択",
                         [""] + existing_players,
                         key=f"{prefix}_select_player_{i}",
                         label_visibility="collapsed"
