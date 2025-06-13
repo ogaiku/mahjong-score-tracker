@@ -131,23 +131,23 @@ def create_extraction_form():
     
     st.subheader("データ確認・修正")
     
-    # フォームリセット用のキー
-    if 'extraction_form_key' not in st.session_state:
-        st.session_state['extraction_form_key'] = 0
+    # フォーム送信後のクリア処理
+    if st.session_state.get('extraction_form_submitted', False):
+        st.session_state['extraction_form_submitted'] = False
+        st.session_state['analysis_result'] = None  # 解析結果もクリア
+        st.rerun()
     
-    form_key = st.session_state['extraction_form_key']
-    
-    with st.form(f"extraction_form_{form_key}"):
+    with st.form("extraction_form", clear_on_submit=True):
         # 解析結果のニックネームをデフォルト値として設定
         extracted_names = [player.get('nickname', '') for player in players]
-        player_names = create_player_input_fields_with_defaults(f"extraction_{form_key}", extracted_names)
+        player_names = create_player_input_fields_with_defaults("extraction", extracted_names)
         
         # 解析結果をデフォルト値として使用
         default_scores = [int(player.get('score', 25000)) for player in players]
-        scores = create_score_input_fields(player_names, default_scores, f"extraction_{form_key}")
+        scores = create_score_input_fields(player_names, default_scores, "extraction")
         
-        game_date, game_time, game_type = create_game_info_fields(f"extraction_{form_key}")
-        notes = st.text_area("メモ", placeholder="特記事項", key=f"extraction_notes_{form_key}")
+        game_date, game_time, game_type = create_game_info_fields("extraction")
+        notes = st.text_area("メモ", placeholder="特記事項")
         
         st.subheader("入力内容確認")
         is_valid = show_input_confirmation(player_names, scores)
@@ -156,29 +156,27 @@ def create_extraction_form():
         
         if submitted and is_valid:
             if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                # 保存成功時にフォームをリセット
-                st.session_state['extraction_form_key'] = form_key + 1
+                st.session_state['extraction_form_submitted'] = True
                 st.rerun()
 
 def manual_input_tab():
     st.header("手動データ入力")
     
-    # フォームリセット用のキー
-    if 'manual_form_key' not in st.session_state:
-        st.session_state['manual_form_key'] = 0
+    # フォーム送信後のクリア処理
+    if st.session_state.get('manual_form_submitted', False):
+        st.session_state['manual_form_submitted'] = False
+        st.rerun()
     
-    form_key = st.session_state['manual_form_key']
-    
-    with st.form(f"manual_input_form_{form_key}"):
+    with st.form("manual_input_form", clear_on_submit=True):
         st.subheader("プレイヤー情報")
-        player_names = create_player_input_fields(f"manual_{form_key}")
+        player_names = create_player_input_fields("manual")
         
         st.subheader("点数入力")
-        scores = create_score_input_fields(player_names, prefix=f"manual_{form_key}")
+        scores = create_score_input_fields(player_names, prefix="manual")
         
         st.subheader("対局情報")
-        game_date, game_time, game_type = create_game_info_fields(f"manual_{form_key}")
-        notes = st.text_area("メモ", placeholder="特記事項", key=f"manual_notes_{form_key}")
+        game_date, game_time, game_type = create_game_info_fields("manual")
+        notes = st.text_area("メモ", placeholder="特記事項")
         
         st.subheader("入力内容確認")
         is_valid = show_input_confirmation(player_names, scores)
@@ -187,6 +185,5 @@ def manual_input_tab():
         
         if submitted and is_valid:
             if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                # 保存成功時にフォームをリセット
-                st.session_state['manual_form_key'] = form_key + 1
+                st.session_state['manual_form_submitted'] = True
                 st.rerun()

@@ -249,25 +249,10 @@ def show_input_confirmation(player_names, scores):
             })
     
     if confirmation_data:
+        # 点数順にソート（高い順）
+        confirmation_data.sort(key=lambda x: int(x["点数"].replace(",", "").replace("点", "")), reverse=True)
         conf_df = pd.DataFrame(confirmation_data)
         st.dataframe(conf_df, hide_index=True, use_container_width=True)
-        
-        # 順位プレビュー
-        scores_for_ranking = [(name, score) for name, score in zip(player_names, scores) if name.strip()]
-        if len(scores_for_ranking) > 1:
-            sorted_players = sorted(scores_for_ranking, key=lambda x: x[1], reverse=True)
-            st.write("順位プレビュー")
-            rank_preview = []
-            for rank, (name, score) in enumerate(sorted_players, 1):
-                rank_preview.append({
-                    "順位": f"{rank}位",
-                    "プレイヤー": name,
-                    "点数": f"{score:,}点"
-                })
-            
-            rank_df = pd.DataFrame(rank_preview)
-            st.dataframe(rank_df, hide_index=True, use_container_width=True)
-        
         return True
     else:
         st.warning("少なくとも1名のプレイヤー名を入力してください")
