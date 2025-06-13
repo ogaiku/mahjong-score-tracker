@@ -1,4 +1,4 @@
-# ui_components.py - シーズン管理完全修正版
+# ui_components.py - シーズン管理完全修正版（重複メッセージ修正）
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -87,6 +87,9 @@ def display_config_status(config_manager: ConfigManager):
             if selected_season != st.session_state['current_season_key']:
                 if switch_season_sync(config_manager, selected_season):
                     st.session_state['current_season_key'] = selected_season
+                    # ConfigManagerのセッション状態を強制更新
+                    if 'config_data' in st.session_state:
+                        del st.session_state['config_data']
                     load_season_data(config_manager, selected_season)
                     st.rerun()
     elif has_sheets_auth and has_seasons:
@@ -100,7 +103,7 @@ def display_config_status(config_manager: ConfigManager):
     else:
         st.sidebar.error("未設定")
     
-    # シーズン管理
+    # シーズン管理（シンプル版・状態管理なし）
     with st.sidebar.expander("シーズン管理", expanded=False):
         if not has_sheets_auth:
             st.warning("Google Sheets認証が必要")
@@ -122,7 +125,7 @@ def display_config_status(config_manager: ConfigManager):
         
         new_season_name = st.text_input(
             "シーズン名", 
-            value=st.session_state['season_management_state']['new_season_name'],
+            value="",  # 常に空文字列から開始
             placeholder="例: 2024年春シーズン",
             disabled=disabled,
             key="season_name_input"
@@ -145,12 +148,15 @@ def display_config_status(config_manager: ConfigManager):
                 success = create_new_season_sync(config_manager, season_key, new_season_name.strip())
                 
                 if success:
-                    st.success(f"'{new_season_name.strip()}' を作成")
+                    st.success(f"'{new_season_name.strip()}' を作成しました")
                     # 入力フィールドをクリア
                     st.session_state['season_management_state']['new_season_name'] = ''
                     # セッション状態をクリアして最新の設定を反映
                     if 'current_season_key' in st.session_state:
                         del st.session_state['current_season_key']
+                    # ConfigManagerのセッション状態を強制更新
+                    if 'config_data' in st.session_state:
+                        del st.session_state['config_data']
                     # 操作完了
                     st.session_state['season_management_state']['operation_in_progress'] = False
                     st.rerun()
@@ -175,28 +181,15 @@ def display_config_status(config_manager: ConfigManager):
                         else:
                             st.write(f"**{season_name}**")
                         
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            if season_key != current_season:
-                                select_key = f"select_{season_key}"
-                                if st.button("選択", key=select_key, use_container_width=True, disabled=disabled):
-                                    st.session_state['season_management_state']['operation_in_progress'] = True
-                                    success = switch_season_sync(config_manager, season_key)
-                                    if success:
-                                        st.session_state['current_season_key'] = season_key
-                                        load_season_data(config_manager, season_key)
-                                        st.session_state['season_management_state']['operation_in_progress'] = False
-                                        st.rerun()
-                                    else:
-                                        st.session_state['season_management_state']['operation_in_progress'] = False
-                        
-                        with col2:
-                            if season_key != current_season:
-                                delete_key = f"delete_{season_key}"
-                                confirm_key = f"confirm_delete_{season_key}"
-                                
-                                if st.session_state.get(confirm_key, False):
+                        # 選択ボタンは削除（切り替えはセレクトボックスで行う）
+                        # 削除ボタンのみ表示
+                        if season_key != current_season:
+                            delete_key = f"delete_{season_key}"
+                            confirm_key = f"confirm_delete_{season_key}"
+                            
+                            if st.session_state.get(confirm_key, False):
+                                col1, col2 = st.columns(2)
+                                with col1:
                                     if st.button("削除実行", key=f"exec_delete_{season_key}", type="primary", use_container_width=True, disabled=disabled):
                                         st.session_state['season_management_state']['operation_in_progress'] = True
                                         success = delete_season_sync(config_manager, season_key)
@@ -204,21 +197,22 @@ def display_config_status(config_manager: ConfigManager):
                                             st.success(f"シーズン '{season_name}' を削除しました")
                                             if confirm_key in st.session_state:
                                                 del st.session_state[confirm_key]
+                                            # ConfigManagerのセッション状態を強制更新
+                                            if 'config_data' in st.session_state:
+                                                del st.session_state['config_data']
                                             st.session_state['season_management_state']['operation_in_progress'] = False
                                             st.rerun()
                                         else:
                                             st.error("削除に失敗しました")
                                             st.session_state['season_management_state']['operation_in_progress'] = False
-                                else:
-                                    if st.button("削除", key=delete_key, use_container_width=True, disabled=disabled):
-                                        st.session_state[confirm_key] = True
-                                        st.rerun()
-                                
-                                # 削除確認中の場合のキャンセルボタン
-                                if st.session_state.get(confirm_key, False):
+                                with col2:
                                     if st.button("キャンセル", key=f"cancel_{season_key}", use_container_width=True):
                                         del st.session_state[confirm_key]
                                         st.rerun()
+                            else:
+                                if st.button("削除", key=delete_key, use_container_width=True, disabled=disabled):
+                                    st.session_state[confirm_key] = True
+                                    st.rerun()
                         
                         st.divider()
             else:
@@ -471,7 +465,7 @@ def display_extraction_results():
     st.success("解析完了")
 
 def save_game_record_with_names(players_data, game_date, game_time, game_type, notes):
-    """対局記録をGoogle Sheetsに保存"""
+    """対局記録をGoogle Sheetsに保存（重複メッセージ修正版）"""
     valid_players = [p for p in players_data if p['name'].strip()]
     if len(valid_players) < 1:
         st.error("少なくとも1名のプレイヤー名を入力してください")
@@ -512,15 +506,13 @@ def save_game_record_with_names(players_data, game_date, game_time, game_type, n
             return False
         
         if sheet_manager.add_record(game_data):
-            current_season = config_manager.get_current_season()
-            season_info = config_manager.get_season_info(current_season)
-            season_name = season_info.get('name', current_season) if season_info else current_season
-            st.success(f"記録を保存しました")
-            
+            # セッション状態の記録も更新
             if 'game_records' not in st.session_state:
                 st.session_state['game_records'] = []
             st.session_state['game_records'].append(game_data)
             
+            # ここで1回だけ成功メッセージを表示
+            st.success("記録を保存しました")
             return True
         else:
             st.error("記録の追加に失敗しました")

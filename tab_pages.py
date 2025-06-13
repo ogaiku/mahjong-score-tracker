@@ -1,4 +1,4 @@
-# tab_pages.py (完全版・絵文字なし)
+# tab_pages.py (完全版・レイアウト修正・重複メッセージ修正)
 import streamlit as st
 import pandas as pd
 from PIL import Image
@@ -247,19 +247,20 @@ def screenshot_upload_tab():
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         
-        col1, col2 = st.columns([1, 1])
+        # レイアウト修正: 画像とボタンを中央寄せで表示
+        st.subheader("アップロード画像")
         
-        with col1:
-            st.subheader("アップロード画像")
+        # 画像を中央に表示（幅を制限）
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
             st.image(image, use_container_width=True)
-            
+        
+        # 解析ボタンを中央に配置
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
             if st.button("解析開始", type="primary", use_container_width=True):
                 extract_data_from_image(image)
                 st.rerun()
-        
-        with col2:
-            # 解析結果の表示部分を削除
-            pass
     
     # 解析結果がある場合のみフォームを表示
     if 'analysis_result' in st.session_state and st.session_state['analysis_result'] is not None:
@@ -315,12 +316,87 @@ def create_extraction_form():
                 st.rerun()
         
         if submitted and is_valid:
-            if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
+            # 重複メッセージを防ぐため、save_game_record_directを使用
+            if save_game_record_direct(player_names, scores, game_date, game_time, game_type, notes):
                 st.success("記録を保存しました")
                 # 成功後にフォームをクリア
                 st.session_state['analysis_result'] = None
                 st.session_state['screenshot_uploader_key'] += 1
                 # rerunしない（ページ遷移を防ぐ）
+
+def save_game_record_direct(player_names, scores, game_date, game_time, game_type, notes=""):
+    """対局記録を直接保存（重複メッセージを避けるため）"""
+    from ui_components import save_game_record_with_names
+    
+    players_data = []
+    for name, score in zip(player_names, scores):
+        players_data.append({"name": name.strip(), "score": score})
+    
+    valid_players = [p for p in players_data if p['name']]
+    if len(valid_players) < 1:
+        st.error("少なくとも1名のプレイヤー名を入力してください")
+        return False
+    
+    # save_game_record_with_namesを直接呼び出すが、成功メッセージは表示しない版を使う
+    from datetime import datetime
+    from config_manager import ConfigManager
+    from spreadsheet_manager import SpreadsheetManager
+    
+    game_data = {
+        'date': game_date.strftime('%Y-%m-%d'),
+        'time': game_time.strftime('%H:%M'),
+        'game_type': game_type,
+        'player1_name': players_data[0]['name'],
+        'player1_score': players_data[0]['score'],
+        'player2_name': players_data[1]['name'],
+        'player2_score': players_data[1]['score'],
+        'player3_name': players_data[2]['name'],
+        'player3_score': players_data[2]['score'],
+        'player4_name': players_data[3]['name'],
+        'player4_score': players_data[3]['score'],
+        'notes': notes,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    
+    config_manager = ConfigManager()
+    sheets_creds = config_manager.load_sheets_credentials()
+    spreadsheet_id = config_manager.get_spreadsheet_id()
+    
+    if not sheets_creds:
+        st.error("Google Sheets認証情報が設定されていません")
+        return False
+    
+    if not spreadsheet_id:
+        st.error("シーズンを作成してください")
+        return False
+    
+    try:
+        sheet_manager = SpreadsheetManager(sheets_creds)
+        if not sheet_manager.connect(spreadsheet_id):
+            st.error("スプレッドシートへの接続に失敗しました")
+            return False
+        
+        if sheet_manager.add_record(game_data):
+            # セッション状態の記録も更新
+            if 'game_records' not in st.session_state:
+                st.session_state['game_records'] = []
+            st.session_state['game_records'].append(game_data)
+            
+            # ここでは成功メッセージを表示しない（呼び出し元で表示）
+            return True
+        else:
+            st.error("記録の追加に失敗しました")
+            return False
+            
+    except Exception as e:
+        error_message = str(e)
+        st.error(f"Google Sheets保存エラー: {error_message}")
+        
+        if "403" in error_message or "permission" in error_message.lower():
+            service_email = sheets_creds.get('client_email', 'N/A')
+            st.info(f"権限エラー: スプレッドシートを {service_email} と共有し、編集者権限を付与してください")
+        
+        return False
 
 def manual_input_tab():
     st.header("手動データ入力")

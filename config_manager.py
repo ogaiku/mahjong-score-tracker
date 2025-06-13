@@ -1,18 +1,20 @@
-# config_manager.py - セッション状態対応版
+# config_manager.py - セッション状態対応版（永続化強化・完全版）
 import json
 import os
 from typing import Dict, Optional, Union
 import streamlit as st
 
 class ConfigManager:
-    """設定ファイルを管理するクラス（セッション状態対応）"""
+    """設定ファイルを管理するクラス（セッション状態対応・永続化強化）"""
     
     def __init__(self, config_file: str = "config.json"):
         self.config_file = config_file
         
-        # セッション状態で設定を管理
-        if 'config_data' not in st.session_state:
+        # セッション状態で設定を管理（強制リフレッシュ対応）
+        if 'config_data' not in st.session_state or st.session_state.get('force_config_reload', False):
             st.session_state['config_data'] = self.load_config()
+            if 'force_config_reload' in st.session_state:
+                del st.session_state['force_config_reload']
         
         self.config = st.session_state['config_data']
     
@@ -20,9 +22,20 @@ class ConfigManager:
         """設定ファイルまたはStreamlit Secretsから設定を読み込み"""
         # まずStreamlit Secretsから読み込みを試行
         if hasattr(st, 'secrets') and len(st.secrets) > 0:
-            return self.load_from_secrets()
+            config = self.load_from_secrets()
+            # Secretsにシーズン情報があれば使用、なければファイルから読み込み
+            if not config.get('google_sheets', {}).get('seasons'):
+                file_config = self.load_from_file()
+                if file_config.get('google_sheets', {}).get('seasons'):
+                    config['google_sheets']['seasons'] = file_config['google_sheets']['seasons']
+                    config['google_sheets']['current_season'] = file_config['google_sheets'].get('current_season', '')
+            return config
         
         # Secretsがない場合は従来のconfig.jsonから読み込み
+        return self.load_from_file()
+    
+    def load_from_file(self) -> Dict:
+        """ファイルから設定を読み込み"""
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -127,18 +140,22 @@ class ConfigManager:
         st.session_state['config_data'] = config_to_save
         self.config = config_to_save
         
-        # Streamlit Cloud環境ではファイル保存しない
-        if hasattr(st, 'secrets') and len(st.secrets) > 0:
-            return True
-        
-        # ローカル環境ではファイルにも保存
+        # ファイル保存を試行（Streamlit Cloud環境でも可能な限り保存）
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_to_save, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
-            st.error(f"設定ファイル保存エラー: {e}")
-            return False
+            # ファイル保存に失敗してもセッション状態は更新されているのでエラーを表示しない
+            # デバッグ用のログのみ
+            if st.get_option("logger.level") == "DEBUG":
+                st.info(f"設定ファイル保存をスキップ: {e}")
+            return True  # セッション状態は正常に更新されているためTrueを返す
+    
+    def force_reload_config(self):
+        """設定を強制的に再読み込み"""
+        st.session_state['force_config_reload'] = True
+        self.__init__(self.config_file)
     
     def get_openai_api_key(self) -> str:
         """OpenAI API Keyを取得"""

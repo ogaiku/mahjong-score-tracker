@@ -1,4 +1,4 @@
-# input_forms.py
+# input_forms.py（改善版・明確な入力方式）
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
@@ -6,7 +6,7 @@ import pytz
 from player_manager import PlayerManager
 
 def create_player_input_fields(prefix="default"):
-    """プレイヤー名入力フィールド"""
+    """プレイヤー名入力フィールド（シンプル版）"""
     if 'game_records' in st.session_state and st.session_state['game_records']:
         player_manager = PlayerManager(st.session_state['game_records'])
         existing_players = player_manager.get_all_player_names()
@@ -21,35 +21,33 @@ def create_player_input_fields(prefix="default"):
             st.caption(f"プレイヤー{i+1}")
             
             if existing_players:
-                input_type = st.radio(
-                    "入力方法",
-                    ["新規入力", "既存選択"],
-                    key=f"{prefix}_input_type_{i}",
-                    horizontal=True,
+                # 既存プレイヤーがいる場合は選択肢を提供
+                all_options = ["（新規入力）"] + existing_players
+                selected_option = st.selectbox(
+                    "プレイヤー選択",
+                    options=all_options,
+                    key=f"{prefix}_player_select_{i}",
                     label_visibility="collapsed"
                 )
                 
-                if input_type == "既存選択":
-                    selected_player = st.selectbox(
-                        "プレイヤーを選択",
-                        [""] + existing_players,
-                        key=f"{prefix}_select_player_{i}",
-                        label_visibility="collapsed"
-                    )
-                    player_names.append(selected_player)
-                else:
+                if selected_option == "（新規入力）":
+                    # 新規入力が選択された場合はテキスト入力を表示
                     new_name = st.text_input(
-                        "名前",
+                        "新しいプレイヤー名",
                         key=f"{prefix}_new_player_{i}",
-                        placeholder="ニックネーム",
+                        placeholder="ニックネームを入力",
                         label_visibility="collapsed"
                     )
                     player_names.append(new_name)
+                else:
+                    # 既存プレイヤーが選択された場合
+                    player_names.append(selected_option)
             else:
+                # 既存プレイヤーがいない場合は新規入力のみ
                 new_name = st.text_input(
-                    "名前",
+                    "プレイヤー名",
                     key=f"{prefix}_new_player_{i}",
-                    placeholder="ニックネーム",
+                    placeholder="ニックネームを入力",
                     label_visibility="collapsed"
                 )
                 player_names.append(new_name)
@@ -75,78 +73,63 @@ def create_player_input_fields_with_defaults(prefix="default", default_names=Non
             st.caption(f"プレイヤー{i+1}")
             default_name = default_names[i] if i < len(default_names) else ''
             
-            if existing_players and default_name in existing_players:
-                # 既存プレイヤーの場合は選択済みに
-                input_type = st.radio(
-                    "入力方法",
-                    ["新規入力", "既存選択"],
-                    index=1,  # 既存選択をデフォルト
-                    key=f"{prefix}_input_type_{i}",
-                    horizontal=True,
-                    label_visibility="collapsed"
-                )
+            if existing_players:
+                all_options = ["（新規入力）"] + existing_players
                 
-                if input_type == "既存選択":
-                    try:
-                        default_index = existing_players.index(default_name) + 1  # +1 because of empty option
-                    except ValueError:
-                        default_index = 0
-                    
-                    selected_player = st.selectbox(
-                        "選択",
-                        [""] + existing_players,
+                # デフォルト値の処理
+                if default_name and default_name in existing_players:
+                    # デフォルト名が既存プレイヤーの場合
+                    default_index = existing_players.index(default_name) + 1  # +1 because of "（新規入力）"
+                    selected_option = st.selectbox(
+                        "プレイヤー選択",
+                        options=all_options,
                         index=default_index,
-                        key=f"{prefix}_select_player_{i}",
-                        label_visibility="collapsed"
-                    )
-                    player_names.append(selected_player)
-                else:
-                    new_name = st.text_input(
-                        "名前",
-                        value=default_name,
-                        key=f"{prefix}_new_player_{i}",
-                        placeholder="ニックネーム",
-                        label_visibility="collapsed"
-                    )
-                    player_names.append(new_name)
-            else:
-                # 新規プレイヤーまたは既存プレイヤーがいない場合
-                if existing_players:
-                    input_type = st.radio(
-                        "入力方法",
-                        ["新規入力", "既存選択"],
-                        index=0,  # 新規入力をデフォルト
-                        key=f"{prefix}_input_type_{i}",
-                        horizontal=True,
+                        key=f"{prefix}_player_select_{i}",
                         label_visibility="collapsed"
                     )
                     
-                    if input_type == "既存選択":
-                        selected_player = st.selectbox(
-                            "選択",
-                            [""] + existing_players,
-                            key=f"{prefix}_select_player_{i}",
-                            label_visibility="collapsed"
-                        )
-                        player_names.append(selected_player)
-                    else:
+                    if selected_option == "（新規入力）":
                         new_name = st.text_input(
-                            "名前",
+                            "新しいプレイヤー名",
                             value=default_name,
                             key=f"{prefix}_new_player_{i}",
-                            placeholder="ニックネーム",
+                            placeholder="ニックネームを入力",
                             label_visibility="collapsed"
                         )
                         player_names.append(new_name)
+                    else:
+                        player_names.append(selected_option)
                 else:
-                    new_name = st.text_input(
-                        "名前",
-                        value=default_name,
-                        key=f"{prefix}_new_player_{i}",
-                        placeholder="ニックネーム",
+                    # デフォルト名が新規の場合
+                    selected_option = st.selectbox(
+                        "プレイヤー選択",
+                        options=all_options,
+                        index=0,  # "（新規入力）"を選択
+                        key=f"{prefix}_player_select_{i}",
                         label_visibility="collapsed"
                     )
-                    player_names.append(new_name)
+                    
+                    if selected_option == "（新規入力）":
+                        new_name = st.text_input(
+                            "新しいプレイヤー名",
+                            value=default_name,
+                            key=f"{prefix}_new_player_{i}",
+                            placeholder="ニックネームを入力",
+                            label_visibility="collapsed"
+                        )
+                        player_names.append(new_name)
+                    else:
+                        player_names.append(selected_option)
+            else:
+                # 既存プレイヤーがいない場合
+                new_name = st.text_input(
+                    "プレイヤー名",
+                    value=default_name,
+                    key=f"{prefix}_new_player_{i}",
+                    placeholder="ニックネームを入力",
+                    label_visibility="collapsed"
+                )
+                player_names.append(new_name)
     
     return player_names
 
@@ -223,7 +206,7 @@ def show_input_confirmation(player_names, scores):
         return False
 
 def save_game_record(player_names, scores, game_date, game_time, game_type, notes=""):
-    """対局記録保存"""
+    """対局記録保存（重複メッセージ修正版・手動入力専用）"""
     from ui_components import save_game_record_with_names
     
     players_data = []
@@ -235,5 +218,5 @@ def save_game_record(player_names, scores, game_date, game_time, game_type, note
         st.error("少なくとも1名のプレイヤー名を入力してください")
         return False
     
-    save_game_record_with_names(players_data, game_date, game_time, game_type, notes)
-    return True
+    # save_game_record_with_names内で既に成功メッセージが表示されるため、ここでは結果のみ返す
+    return save_game_record_with_names(players_data, game_date, game_time, game_type, notes)
