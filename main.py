@@ -145,10 +145,13 @@ def load_data_from_sheets():
         # 読み込み結果を表示
         if 'game_records' in st.session_state and st.session_state['game_records']:
             record_count = len(st.session_state['game_records'])
-            st.success(f"Google Sheetsから {record_count} 件の記録を読み込みました")
+            st.info(f"Google Sheetsから {record_count} 件の記録を読み込みました")
+        else:
+            st.info("Google Sheetsにデータがありません。新しい記録を追加してください。")
         
     except Exception as e:
         st.warning(f"データ読み込み中にエラーが発生: {e}")
+        st.info("Google Sheets設定を確認してください")
         # ローカルデータを初期化
         if 'game_records' not in st.session_state:
             st.session_state['game_records'] = []
