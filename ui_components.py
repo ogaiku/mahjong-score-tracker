@@ -335,9 +335,7 @@ def display_extraction_results():
         st.error(result.get('message', '解析に失敗しました'))
         return
     
-    confidence = result.get('confidence', 0.0)
     st.success("解析完了")
-    st.write(f"信頼度: {confidence:.0%}")
     
     players = result.get('players', [])
     
@@ -363,17 +361,6 @@ def display_extraction_results():
             st.warning("有効なプレイヤー情報が抽出できませんでした")
     else:
         st.warning("プレイヤー情報が抽出できませんでした")
-    
-    notes = result.get('notes', '')
-    if notes:
-        st.info(f"解析メモ: {notes}")
-    
-    with st.expander("抽出テキスト詳細"):
-        extracted_text = result.get('extracted_text', '')
-        if extracted_text:
-            st.text(extracted_text)
-        else:
-            st.info("テキストが抽出されませんでした")
 
 def save_game_record_with_names(players_data, game_date, game_time, game_type, notes):
     """対局記録を保存"""

@@ -132,7 +132,10 @@ def create_extraction_form():
     st.subheader("データ確認・修正")
     
     # フォームリセット用のキー
-    form_key = st.session_state.get('extraction_form_key', 0)
+    if 'extraction_form_key' not in st.session_state:
+        st.session_state['extraction_form_key'] = 0
+    
+    form_key = st.session_state['extraction_form_key']
     
     with st.form(f"extraction_form_{form_key}"):
         # 解析結果のニックネームをデフォルト値として設定
@@ -144,14 +147,10 @@ def create_extraction_form():
         scores = create_score_input_fields(player_names, default_scores, f"extraction_{form_key}")
         
         game_date, game_time, game_type = create_game_info_fields(f"extraction_{form_key}")
-        notes = st.text_area("メモ", placeholder="特記事項")
+        notes = st.text_area("メモ", placeholder="特記事項", key=f"extraction_notes_{form_key}")
         
         st.subheader("入力内容確認")
         is_valid = show_input_confirmation(player_names, scores)
-        
-        confidence = result.get('confidence', 0.0)
-        if confidence < 0.8:
-            st.warning(f"解析信頼度: {confidence:.0%} - データを確認してください")
         
         submitted = st.form_submit_button("記録を保存", type="primary", use_container_width=True)
         
@@ -165,7 +164,10 @@ def manual_input_tab():
     st.header("手動データ入力")
     
     # フォームリセット用のキー
-    form_key = st.session_state.get('manual_form_key', 0)
+    if 'manual_form_key' not in st.session_state:
+        st.session_state['manual_form_key'] = 0
+    
+    form_key = st.session_state['manual_form_key']
     
     with st.form(f"manual_input_form_{form_key}"):
         st.subheader("プレイヤー情報")
@@ -176,7 +178,7 @@ def manual_input_tab():
         
         st.subheader("対局情報")
         game_date, game_time, game_type = create_game_info_fields(f"manual_{form_key}")
-        notes = st.text_area("メモ", placeholder="特記事項")
+        notes = st.text_area("メモ", placeholder="特記事項", key=f"manual_notes_{form_key}")
         
         st.subheader("入力内容確認")
         is_valid = show_input_confirmation(player_names, scores)
