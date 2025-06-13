@@ -329,6 +329,10 @@ def extract_data_from_image(image):
 
 def display_extraction_results():
     """解析結果の表示"""
+    # analysis_resultがNoneまたは存在しない場合は何も表示しない
+    if 'analysis_result' not in st.session_state or st.session_state['analysis_result'] is None:
+        return
+    
     result = st.session_state['analysis_result']
     
     if not result.get('success', False):
