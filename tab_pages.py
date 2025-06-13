@@ -5,6 +5,7 @@ from PIL import Image
 from datetime import date
 from input_forms import (
     create_player_input_fields, 
+    create_player_input_fields_with_defaults,
     create_score_input_fields,
     create_game_info_fields,
     show_input_confirmation,
@@ -131,13 +132,15 @@ def create_extraction_form():
     st.subheader("データ確認・修正")
     
     with st.form("extraction_form"):
-        player_names = create_player_input_fields()
+        # 解析結果のニックネームをデフォルト値として設定
+        extracted_names = [player.get('nickname', '') for player in players]
+        player_names = create_player_input_fields_with_defaults("extraction", extracted_names)
         
         # 解析結果をデフォルト値として使用
         default_scores = [int(player.get('score', 25000)) for player in players]
-        scores = create_score_input_fields(player_names, default_scores)
+        scores = create_score_input_fields(player_names, default_scores, "extraction")
         
-        game_date, game_time, game_type = create_game_info_fields()
+        game_date, game_time, game_type = create_game_info_fields("extraction")
         notes = st.text_area("メモ", placeholder="特記事項")
         
         st.subheader("入力内容確認")
@@ -157,13 +160,13 @@ def manual_input_tab():
     
     with st.form("manual_input_form"):
         st.subheader("プレイヤー情報")
-        player_names = create_player_input_fields()
+        player_names = create_player_input_fields("manual")
         
         st.subheader("点数入力")
-        scores = create_score_input_fields(player_names)
+        scores = create_score_input_fields(player_names, prefix="manual")
         
         st.subheader("対局情報")
-        game_date, game_time, game_type = create_game_info_fields()
+        game_date, game_time, game_type = create_game_info_fields("manual")
         notes = st.text_area("メモ", placeholder="特記事項")
         
         st.subheader("入力内容確認")
@@ -221,11 +224,11 @@ def quick_entry_tab():
             # 対局情報
             col1, col2 = st.columns(2)
             with col1:
-                game_date = st.date_input("対局日", value=date.today())
+                game_date = st.date_input("対局日", value=date.today(), key="quick_date")
             with col2:
-                game_type = st.selectbox("対局タイプ", ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"])
+                game_type = st.selectbox("対局タイプ", ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"], key="quick_game_type")
             
-            notes = st.text_input("メモ")
+            notes = st.text_input("メモ", key="quick_notes")
             
             # 順位プレビュー
             if selected_players and scores:

@@ -4,7 +4,99 @@ import pandas as pd
 from datetime import datetime, date
 from player_manager import PlayerManager
 
-def create_player_input_fields():
+def create_player_input_fields_with_defaults(prefix="default", default_names=None):
+    """プレイヤー名入力フィールド（デフォルト値付き）"""
+    if default_names is None:
+        default_names = ['', '', '', '']
+    
+    if 'game_records' in st.session_state and st.session_state['game_records']:
+        player_manager = PlayerManager(st.session_state['game_records'])
+        existing_players = player_manager.get_all_player_names()
+    else:
+        existing_players = []
+    
+    cols = st.columns(4)
+    player_names = []
+    
+    for i, col in enumerate(cols):
+        with col:
+            st.caption(f"プレイヤー{i+1}")
+            default_name = default_names[i] if i < len(default_names) else ''
+            
+            if existing_players and default_name in existing_players:
+                # 既存プレイヤーの場合は選択済みに
+                input_type = st.radio(
+                    "入力方法",
+                    ["新規入力", "既存選択"],
+                    index=1,  # 既存選択をデフォルト
+                    key=f"{prefix}_input_type_{i}",
+                    horizontal=True,
+                    label_visibility="collapsed"
+                )
+                
+                if input_type == "既存選択":
+                    try:
+                        default_index = existing_players.index(default_name) + 1  # +1 because of empty option
+                    except ValueError:
+                        default_index = 0
+                    
+                    selected_player = st.selectbox(
+                        "選択",
+                        [""] + existing_players,
+                        index=default_index,
+                        key=f"{prefix}_select_player_{i}",
+                        label_visibility="collapsed"
+                    )
+                    player_names.append(selected_player)
+                else:
+                    new_name = st.text_input(
+                        "名前",
+                        value=default_name,
+                        key=f"{prefix}_new_player_{i}",
+                        placeholder="ニックネーム",
+                        label_visibility="collapsed"
+                    )
+                    player_names.append(new_name)
+            else:
+                # 新規プレイヤーまたは既存プレイヤーがいない場合
+                if existing_players:
+                    input_type = st.radio(
+                        "入力方法",
+                        ["新規入力", "既存選択"],
+                        index=0,  # 新規入力をデフォルト
+                        key=f"{prefix}_input_type_{i}",
+                        horizontal=True,
+                        label_visibility="collapsed"
+                    )
+                    
+                    if input_type == "既存選択":
+                        selected_player = st.selectbox(
+                            "選択",
+                            [""] + existing_players,
+                            key=f"{prefix}_select_player_{i}",
+                            label_visibility="collapsed"
+                        )
+                        player_names.append(selected_player)
+                    else:
+                        new_name = st.text_input(
+                            "名前",
+                            value=default_name,
+                            key=f"{prefix}_new_player_{i}",
+                            placeholder="ニックネーム",
+                            label_visibility="collapsed"
+                        )
+                        player_names.append(new_name)
+                else:
+                    new_name = st.text_input(
+                        "名前",
+                        value=default_name,
+                        key=f"{prefix}_new_player_{i}",
+                        placeholder="ニックネーム",
+                        label_visibility="collapsed"
+                    )
+                    player_names.append(new_name)
+    
+    return player_names
     """プレイヤー名入力フィールド"""
     if 'game_records' in st.session_state and st.session_state['game_records']:
         player_manager = PlayerManager(st.session_state['game_records'])
@@ -23,7 +115,7 @@ def create_player_input_fields():
                 input_type = st.radio(
                     "入力方法",
                     ["新規入力", "既存選択"],
-                    key=f"input_type_{i}",
+                    key=f"{prefix}_input_type_{i}",
                     horizontal=True,
                     label_visibility="collapsed"
                 )
@@ -32,14 +124,14 @@ def create_player_input_fields():
                     selected_player = st.selectbox(
                         "選択",
                         [""] + existing_players,
-                        key=f"select_player_{i}",
+                        key=f"{prefix}_select_player_{i}",
                         label_visibility="collapsed"
                     )
                     player_names.append(selected_player)
                 else:
                     new_name = st.text_input(
                         "名前",
-                        key=f"new_player_{i}",
+                        key=f"{prefix}_new_player_{i}",
                         placeholder="ニックネーム",
                         label_visibility="collapsed"
                     )
@@ -47,7 +139,7 @@ def create_player_input_fields():
             else:
                 new_name = st.text_input(
                     "名前",
-                    key=f"new_player_{i}",
+                    key=f"{prefix}_new_player_{i}",
                     placeholder="ニックネーム",
                     label_visibility="collapsed"
                 )
@@ -55,7 +147,7 @@ def create_player_input_fields():
     
     return player_names
 
-def create_score_input_fields(player_names, default_scores=None):
+def create_score_input_fields(player_names, default_scores=None, prefix="default"):
     """点数入力フィールド"""
     if default_scores is None:
         default_scores = [25000, 25000, 25000, 25000]
@@ -73,25 +165,25 @@ def create_score_input_fields(player_names, default_scores=None):
                 max_value=200000,
                 value=int(default_score),
                 step=100,
-                key=f"score_{i}",
+                key=f"{prefix}_score_{i}",
                 label_visibility="collapsed"
             )
             scores.append(score)
     
     return scores
 
-def create_game_info_fields():
+def create_game_info_fields(prefix="default"):
     """対局情報入力フィールド"""
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        game_date = st.date_input("対局日", value=date.today())
+        game_date = st.date_input("対局日", value=date.today(), key=f"{prefix}_date")
     
     with col2:
-        game_time = st.time_input("対局時刻")
+        game_time = st.time_input("対局時刻", key=f"{prefix}_time")
     
     with col3:
-        game_type = st.selectbox("対局タイプ", ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"])
+        game_type = st.selectbox("対局タイプ", ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"], key=f"{prefix}_game_type")
     
     return game_date, game_time, game_type
 
