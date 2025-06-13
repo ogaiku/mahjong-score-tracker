@@ -58,39 +58,6 @@ def home_tab():
         with col4:
             st.metric("最多対局者", most_active_player, f"{max_games}回")
         
-        # データ操作メニュー
-        st.divider()
-        st.subheader("データ管理")
-        
-        btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
-        
-        with btn_col1:
-            if st.button("データ表示", use_container_width=True):
-                st.session_state['show_data'] = True
-                st.rerun()
-        
-        with btn_col2:
-            if st.button("基本統計", use_container_width=True):
-                st.session_state['show_stats'] = True
-                st.rerun()
-        
-        with btn_col3:
-            if st.button("詳細統計", use_container_width=True):
-                st.session_state['show_player_stats'] = True
-                st.rerun()
-        
-        with btn_col4:
-            # CSV出力ボタン
-            df = pd.DataFrame(st.session_state['game_records'])
-            csv_data = df.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(
-                label="CSV出力",
-                data=csv_data,
-                file_name=f"mahjong_records_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        
         # 最近の対局記録
         st.divider()
         st.subheader("最近の対局記録")
@@ -137,6 +104,35 @@ def home_tab():
                         )
             else:
                 st.info("3回以上対局したプレイヤーがいません")
+        
+        # データ操作メニュー
+        st.divider()
+        st.subheader("データ管理")
+        
+        btn_col1, btn_col2, btn_col3 = st.columns(3)
+        
+        with btn_col1:
+            if st.button("データ表示", use_container_width=True):
+                st.session_state['show_data'] = True
+                st.rerun()
+        
+        with btn_col2:
+            if st.button("詳細統計", use_container_width=True):
+                st.session_state['show_player_stats'] = True
+                st.rerun()
+        
+        with btn_col3:
+            # CSV出力ボタン（一意のキーを追加）
+            df = pd.DataFrame(st.session_state['game_records'])
+            csv_data = df.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="CSV出力",
+                data=csv_data,
+                file_name=f"mahjong_records_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="home_csv_download"  # 一意のキーを追加
+            )
     
     else:
         st.info("記録がありません。対局データを追加してください。")
@@ -167,9 +163,6 @@ def home_tab():
     # モーダル表示処理
     if st.session_state.get('show_data', False):
         show_data_modal()
-    
-    if st.session_state.get('show_stats', False):
-        show_statistics_modal()
     
     if st.session_state.get('show_player_stats', False):
         show_player_statistics_modal()

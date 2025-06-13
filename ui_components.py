@@ -24,17 +24,7 @@ def setup_sidebar():
     if st.sidebar.button("データ同期", use_container_width=True, help="Google Sheetsからデータを読み込み"):
         sync_data_from_sheets(config_manager)
     
-    # データ表示・統計ボタン
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("データ表示", use_container_width=True, key="sidebar_data_btn"):
-            st.session_state['show_data'] = True
-    
-    with col2:
-        if st.button("統計表示", use_container_width=True, key="sidebar_stats_btn"):
-            st.session_state['show_stats'] = True
-    
-    # 記録数とダウンロード
+    # 記録数表示と接続状況
     if 'game_records' in st.session_state and st.session_state['game_records']:
         record_count = len(st.session_state['game_records'])
         st.sidebar.metric("読み込み済み記録", f"{record_count}件")
@@ -48,16 +38,6 @@ def setup_sidebar():
                 st.sidebar.error("Google Sheets: 接続エラー")
         else:
             st.sidebar.warning("Google Sheets: 未設定")
-        
-        df = pd.DataFrame(st.session_state['game_records'])
-        csv_data = df.to_csv(index=False, encoding='utf-8-sig')
-        st.sidebar.download_button(
-            label="CSV出力",
-            data=csv_data,
-            file_name=f"mahjong_records_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
     else:
         st.sidebar.info("記録なし - データ同期を実行してください")
 
@@ -231,26 +211,6 @@ def check_sheets_sync_status(config_manager: ConfigManager) -> dict:
         return {'configured': True, 'can_connect': False}
 
 def convert_sheets_records(sheets_records: list) -> list:
-    """Google Sheetsの記録をアプリ形式に変換"""
-    converted = []
-    for record in sheets_records:
-        converted_record = {
-            'date': record.get('対局日', ''),
-            'time': record.get('対局時刻', ''),
-            'game_type': record.get('対局タイプ', ''),
-            'player1_name': record.get('プレイヤー1名', ''),
-            'player1_score': record.get('プレイヤー1点数', 0),
-            'player2_name': record.get('プレイヤー2名', ''),
-            'player2_score': record.get('プレイヤー2点数', 0),
-            'player3_name': record.get('プレイヤー3名', ''),
-            'player3_score': record.get('プレイヤー3点数', 0),
-            'player4_name': record.get('プレイヤー4名', ''),
-            'player4_score': record.get('プレイヤー4点数', 0),
-            'notes': record.get('メモ', ''),
-            'timestamp': record.get('登録日時', '')
-        }
-        converted.append(converted_record)
-    return converted
     """Google Sheetsの記録をアプリ形式に変換"""
     converted = []
     for record in sheets_records:
