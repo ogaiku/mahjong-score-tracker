@@ -57,6 +57,19 @@ def display_config_status(config_manager: ConfigManager):
         st.sidebar.success(f"現在のシーズン: {current_season}")
         st.sidebar.caption(f"登録済みシーズン: {season_count}個")
         
+        # スプレッドシートURLの表示
+        current_season_info = config_manager.get_season_info(current_season)
+        if current_season_info and current_season_info.get('url'):
+            spreadsheet_url = current_season_info['url']
+            with st.sidebar.expander("スプレッドシート"):
+                st.markdown(f"**{current_season_info.get('name', current_season)}**")
+                # 新しいタブで開くリンク
+                st.markdown(f'<a href="{spreadsheet_url}" target="_blank" style="text-decoration: none;"><button style="background-color: #f0f2f6; color: #262730; border: 1px solid #d4d4d8; padding: 8px 16px; border-radius: 4px; cursor: pointer; width: 100%; font-size: 14px;">新しいタブで開く</button></a>', unsafe_allow_html=True)
+                # URLの短縮表示
+                short_url = spreadsheet_url[:50] + "..." if len(spreadsheet_url) > 50 else spreadsheet_url
+                st.code(short_url, language=None)
+                st.caption("URLをコピーしてブラウザで開いてください")
+        
         # シーズン選択
         seasons = status['seasons']
         if len(seasons) > 1:

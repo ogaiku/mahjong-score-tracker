@@ -258,12 +258,8 @@ def screenshot_upload_tab():
                 st.rerun()
         
         with col2:
-            st.subheader("解析結果")
-            
-            if 'analysis_result' in st.session_state and st.session_state['analysis_result'] is not None:
-                display_extraction_results()
-            else:
-                st.info("解析開始ボタンを押してください")
+            # 解析結果の表示部分を削除
+            pass
     
     # 解析結果がある場合のみフォームを表示
     if 'analysis_result' in st.session_state and st.session_state['analysis_result'] is not None:
