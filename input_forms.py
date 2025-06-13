@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
+import pytz
 from player_manager import PlayerManager
 
 def create_player_input_fields(prefix="default"):
@@ -148,55 +149,6 @@ def create_player_input_fields_with_defaults(prefix="default", default_names=Non
                     player_names.append(new_name)
     
     return player_names
-    """プレイヤー名入力フィールド"""
-    if 'game_records' in st.session_state and st.session_state['game_records']:
-        player_manager = PlayerManager(st.session_state['game_records'])
-        existing_players = player_manager.get_all_player_names()
-    else:
-        existing_players = []
-    
-    cols = st.columns(4)
-    player_names = []
-    
-    for i, col in enumerate(cols):
-        with col:
-            st.caption(f"プレイヤー{i+1}")
-            
-            if existing_players:
-                input_type = st.radio(
-                    "入力方法",
-                    ["新規入力", "既存選択"],
-                    key=f"{prefix}_input_type_{i}",
-                    horizontal=True,
-                    label_visibility="collapsed"
-                )
-                
-                if input_type == "既存選択":
-                    selected_player = st.selectbox(
-                        "選択",
-                        [""] + existing_players,
-                        key=f"{prefix}_select_player_{i}",
-                        label_visibility="collapsed"
-                    )
-                    player_names.append(selected_player)
-                else:
-                    new_name = st.text_input(
-                        "名前",
-                        key=f"{prefix}_new_player_{i}",
-                        placeholder="ニックネーム",
-                        label_visibility="collapsed"
-                    )
-                    player_names.append(new_name)
-            else:
-                new_name = st.text_input(
-                    "名前",
-                    key=f"{prefix}_new_player_{i}",
-                    placeholder="ニックネーム",
-                    label_visibility="collapsed"
-                )
-                player_names.append(new_name)
-    
-    return player_names
 
 def create_score_input_fields(player_names, default_scores=None, prefix="default"):
     """点数入力フィールド"""
@@ -224,16 +176,20 @@ def create_score_input_fields(player_names, default_scores=None, prefix="default
     return scores
 
 def create_game_info_fields(prefix="default"):
-    """対局情報入力フィールド"""
+    """対局情報入力フィールド（日本時間対応）"""
     from config_manager import ConfigManager
+    
+    # 日本時間を取得
+    jst = pytz.timezone('Asia/Tokyo')
+    now_jst = datetime.now(jst)
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        game_date = st.date_input("対局日", value=date.today(), key=f"{prefix}_date")
+        game_date = st.date_input("対局日", value=now_jst.date(), key=f"{prefix}_date")
     
     with col2:
-        game_time = st.time_input("対局時刻", key=f"{prefix}_time")
+        game_time = st.time_input("対局時刻", value=now_jst.time(), key=f"{prefix}_time")
     
     with col3:
         # デフォルト値を設定から取得
