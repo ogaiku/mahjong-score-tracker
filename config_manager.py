@@ -1,18 +1,23 @@
-# config_manager.py - 設定ファイル管理（シーズン管理強化版）
+# config_manager.py - Streamlit Secrets対応版
 import json
 import os
 from typing import Dict, Optional, Union
 import streamlit as st
 
 class ConfigManager:
-    """設定ファイルを管理するクラス"""
+    """設定ファイルを管理するクラス（Streamlit Secrets対応）"""
     
     def __init__(self, config_file: str = "config.json"):
         self.config_file = config_file
         self.config = self.load_config()
     
     def load_config(self) -> Dict:
-        """設定ファイルを読み込み"""
+        """設定ファイルまたはStreamlit Secretsから設定を読み込み"""
+        # まずStreamlit Secretsから読み込みを試行
+        if hasattr(st, 'secrets') and len(st.secrets) > 0:
+            return self.load_from_secrets()
+        
+        # Secretsがない場合は従来のconfig.jsonから読み込み
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -32,6 +37,40 @@ class ConfigManager:
             default_config = self.get_default_config()
             self.save_config(default_config)
             return default_config
+    
+    def load_from_secrets(self) -> Dict:
+        """Streamlit Secretsから設定を読み込み"""
+        try:
+            config = {
+                "openai": {
+                    "api_key": st.secrets.get("openai", {}).get("api_key", "").strip(' "'),
+                    "model": "gpt-4o"
+                },
+                "google_vision": {
+                    "api_key": st.secrets.get("google_vision", {}).get("api_key", "").strip(' "'),
+                    "credentials_file": ""
+                },
+                "google_sheets": {
+                    "credentials_file": "",
+                    "seasons": {
+                        "season1": {
+                            "name": "mahjong-score-tracker season1",
+                            "spreadsheet_id": "1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ",
+                            "url": "https://docs.google.com/spreadsheets/d/1CGkwnN-g6AUjbURXENZJADkmaep88RXq4fj1QQXuEfQ/edit?gid=0#gid=0"
+                        }
+                    },
+                    "current_season": "season1"
+                },
+                "app": {
+                    "default_game_type": "四麻半荘",
+                    "auto_save_to_sheets": True
+                }
+            }
+            
+            return config
+        except Exception as e:
+            st.error(f"Secrets読み込みエラー: {e}")
+            return self.get_default_config()
     
     def _needs_migration(self, config: Dict) -> bool:
         """設定の移行が必要かチェック"""
@@ -71,7 +110,7 @@ class ConfigManager:
                 "credentials_file": ""
             },
             "google_sheets": {
-                "credentials_file": "sheets_credentials.json",
+                "credentials_file": "",
                 "seasons": {
                     "season1": {
                         "name": "mahjong-score-tracker season1",
@@ -88,7 +127,11 @@ class ConfigManager:
         }
     
     def save_config(self, config: Optional[Dict] = None) -> bool:
-        """設定ファイルを保存"""
+        """設定ファイルを保存（Streamlit Cloud環境では無効）"""
+        # Streamlit Cloud環境では設定ファイルの保存は行わない
+        if hasattr(st, 'secrets') and len(st.secrets) > 0:
+            return True
+        
         try:
             config_to_save = config if config is not None else self.config
             with open(self.config_file, 'w', encoding='utf-8') as f:
@@ -377,7 +420,37 @@ class ConfigManager:
         return None
     
     def load_sheets_credentials(self) -> Optional[Dict]:
-        """Sheets API認証情報を読み込み"""
+        """Sheets API認証情報を読み込み（Streamlit Secrets対応）"""
+        # まずStreamlit Secretsから読み込みを試行
+        if hasattr(st, 'secrets') and 'google_sheets' in st.secrets:
+            try:
+                sheets_secrets = st.secrets['google_sheets']
+                
+                # private_keyの改行を正しく処理
+                private_key = sheets_secrets.get('private_key', '').strip(' "')
+                if private_key and '\\n' in private_key:
+                    private_key = private_key.replace('\\n', '\n')
+                
+                credentials_dict = {
+                    "type": sheets_secrets.get('type', '').strip(' "'),
+                    "project_id": sheets_secrets.get('project_id', '').strip(' "'),
+                    "private_key": private_key,
+                    "client_email": sheets_secrets.get('client_email', '').strip(' "'),
+                    "client_id": "",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+                }
+                
+                # 必要なフィールドがすべて存在するかチェック
+                required_fields = ['type', 'project_id', 'private_key', 'client_email']
+                if all(credentials_dict.get(field) for field in required_fields):
+                    return credentials_dict
+                
+            except Exception as e:
+                st.error(f"Secrets からGoogle Sheets認証情報読み込みエラー: {e}")
+        
+        # Secretsがない場合はJSONファイルから読み込み
         creds_file = self.get_sheets_credentials_file()
         if creds_file and os.path.exists(creds_file):
             try:
