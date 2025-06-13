@@ -4,6 +4,57 @@ import pandas as pd
 from datetime import datetime, date
 from player_manager import PlayerManager
 
+def create_player_input_fields(prefix="default"):
+    """プレイヤー名入力フィールド"""
+    if 'game_records' in st.session_state and st.session_state['game_records']:
+        player_manager = PlayerManager(st.session_state['game_records'])
+        existing_players = player_manager.get_all_player_names()
+    else:
+        existing_players = []
+    
+    cols = st.columns(4)
+    player_names = []
+    
+    for i, col in enumerate(cols):
+        with col:
+            st.caption(f"プレイヤー{i+1}")
+            
+            if existing_players:
+                input_type = st.radio(
+                    "入力方法",
+                    ["新規入力", "既存選択"],
+                    key=f"{prefix}_input_type_{i}",
+                    horizontal=True,
+                    label_visibility="collapsed"
+                )
+                
+                if input_type == "既存選択":
+                    selected_player = st.selectbox(
+                        "選択",
+                        [""] + existing_players,
+                        key=f"{prefix}_select_player_{i}",
+                        label_visibility="collapsed"
+                    )
+                    player_names.append(selected_player)
+                else:
+                    new_name = st.text_input(
+                        "名前",
+                        key=f"{prefix}_new_player_{i}",
+                        placeholder="ニックネーム",
+                        label_visibility="collapsed"
+                    )
+                    player_names.append(new_name)
+            else:
+                new_name = st.text_input(
+                    "名前",
+                    key=f"{prefix}_new_player_{i}",
+                    placeholder="ニックネーム",
+                    label_visibility="collapsed"
+                )
+                player_names.append(new_name)
+    
+    return player_names
+
 def create_player_input_fields_with_defaults(prefix="default", default_names=None):
     """プレイヤー名入力フィールド（デフォルト値付き）"""
     if default_names is None:
