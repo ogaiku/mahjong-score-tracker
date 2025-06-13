@@ -478,7 +478,7 @@ def create_config_template():
             "model": "gpt-4o"
         },
         "google_vision": {
-            "api_key": "AIzaSyBGoUI33CUU7Y1nktcV3GZHc05D7uswC4E",
+            "api_key": "",
             "credentials_file": ""
         },
         "google_sheets": {
