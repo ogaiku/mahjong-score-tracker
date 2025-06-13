@@ -1,4 +1,4 @@
-# ui_components.py - シーズン管理修正版
+# ui_components.py - シーズン管理完全修正版
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -85,7 +85,7 @@ def display_config_status(config_manager: ConfigManager):
             )
             
             if selected_season != st.session_state['current_season_key']:
-                if switch_season(config_manager, selected_season):
+                if switch_season_sync(config_manager, selected_season):
                     st.session_state['current_season_key'] = selected_season
                     load_season_data(config_manager, selected_season)
                     st.rerun()
@@ -93,41 +93,59 @@ def display_config_status(config_manager: ConfigManager):
         st.sidebar.error("Google Sheets未設定")
     
     # シーズン管理
-    with st.sidebar.expander("シーズン管理"):
+    with st.sidebar.expander("シーズン管理", expanded=False):
         if not has_sheets_auth:
             st.warning("Google Sheets認証が必要")
             return
         
-        # 新シーズン追加フォーム
+        # セッション状態初期化
+        if 'season_management_state' not in st.session_state:
+            st.session_state['season_management_state'] = {
+                'new_season_name': '',
+                'operation_in_progress': False,
+                'last_operation': None
+            }
+        
+        # 新シーズン追加
         st.subheader("新シーズン追加")
         
-        # フォーム状態管理を追加
-        if 'season_form_key' not in st.session_state:
-            st.session_state['season_form_key'] = 0
+        # 操作中の場合は入力を無効化
+        disabled = st.session_state['season_management_state']['operation_in_progress']
         
-        with st.form(key=f"add_season_form_{st.session_state['season_form_key']}"):
-            new_season_name = st.text_input("シーズン名", placeholder="例: season2024")
-            add_season_submitted = st.form_submit_button("シーズン追加", use_container_width=True)
+        new_season_name = st.text_input(
+            "シーズン名", 
+            value=st.session_state['season_management_state']['new_season_name'],
+            placeholder="例: season2024",
+            disabled=disabled,
+            key="season_name_input"
+        )
+        
+        if st.button("シーズン追加", disabled=disabled or not new_season_name.strip(), key="add_season_button"):
+            # 操作開始
+            st.session_state['season_management_state']['operation_in_progress'] = True
+            st.session_state['season_management_state']['last_operation'] = 'add'
             
-            if add_season_submitted:
-                if new_season_name and new_season_name.strip():
-                    # シーズンキーを生成（英数字のみ）
-                    season_key = new_season_name.strip().replace(' ', '_').lower()
-                    
-                    # 既存のシーズンキーをチェック
-                    existing_seasons = config_manager.get_all_seasons()
-                    if season_key in existing_seasons:
-                        st.error(f"シーズンキー '{season_key}' は既に存在します")
-                    else:
-                        if create_new_season(config_manager, season_key, new_season_name.strip()):
-                            st.success(f"シーズン '{season_key}' を作成しました")
-                            # フォームキーを更新してフォームをリセット
-                            st.session_state['season_form_key'] += 1
-                            st.rerun()
-                        else:
-                            st.error("シーズン作成に失敗しました")
+            season_key = new_season_name.strip().replace(' ', '_').lower()
+            
+            # 既存チェック
+            existing_seasons = config_manager.get_all_seasons()
+            if season_key in existing_seasons:
+                st.error(f"シーズンキー '{season_key}' は既に存在します")
+                st.session_state['season_management_state']['operation_in_progress'] = False
+            else:
+                # シーズン作成実行
+                success = create_new_season_sync(config_manager, season_key, new_season_name.strip())
+                
+                if success:
+                    st.success(f"シーズン '{season_key}' を作成しました")
+                    # 入力フィールドをクリア
+                    st.session_state['season_management_state']['new_season_name'] = ''
+                    # 少し待ってからページをリロード
+                    st.session_state['season_management_state']['operation_in_progress'] = False
+                    st.rerun()
                 else:
-                    st.error("シーズン名を入力してください")
+                    st.error("シーズン作成に失敗しました")
+                    st.session_state['season_management_state']['operation_in_progress'] = False
         
         # 既存シーズン管理
         if has_seasons:
@@ -135,89 +153,165 @@ def display_config_status(config_manager: ConfigManager):
             seasons = status['seasons']
             current_season = status['current_season']
             
-            # 現在のシーズンは切り替えのみ表示
-            other_seasons = {k: v for k, v in seasons.items() if k != current_season}
+            # 他のシーズンのみ表示
+            other_seasons = [(k, v) for k, v in seasons.items() if k != current_season]
             
             if other_seasons:
-                st.write("**他のシーズン:**")
-                for season_key, season_info in other_seasons.items():
-                    col1, col2, col3 = st.columns([2, 1, 1])
+                for season_key, season_info in other_seasons:
+                    season_name = season_info.get('name', season_key)
                     
-                    with col1:
-                        season_name = season_info.get('name', season_key)
-                        st.text(season_name)
-                    
-                    with col2:
-                        # 選択ボタン
-                        if st.button("選択", key=f"select_{season_key}_{hash(season_key)}", use_container_width=True):
-                            if switch_season(config_manager, season_key):
-                                st.session_state['current_season_key'] = season_key
-                                load_season_data(config_manager, season_key)
-                                st.rerun()
-                    
-                    with col3:
-                        # 削除ボタン（現在のシーズン以外）
-                        confirm_key = f"confirm_delete_{season_key}"
+                    # 各シーズンのコンテナ
+                    with st.container():
+                        st.write(f"**{season_name}**")
                         
-                        if st.session_state.get(confirm_key, False):
-                            if st.button("確認", key=f"confirm_{season_key}_{hash(season_key)}", type="primary", use_container_width=True):
-                                if config_manager.delete_season(season_key):
-                                    st.success(f"シーズン '{season_key}' を削除しました")
-                                    if confirm_key in st.session_state:
-                                        del st.session_state[confirm_key]
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            select_key = f"select_{season_key}"
+                            if st.button("選択", key=select_key, use_container_width=True, disabled=disabled):
+                                st.session_state['season_management_state']['operation_in_progress'] = True
+                                success = switch_season_sync(config_manager, season_key)
+                                if success:
+                                    st.session_state['current_season_key'] = season_key
+                                    load_season_data(config_manager, season_key)
+                                    st.session_state['season_management_state']['operation_in_progress'] = False
                                     st.rerun()
                                 else:
-                                    st.error("削除に失敗しました")
-                        else:
-                            if st.button("削除", key=f"delete_{season_key}_{hash(season_key)}", use_container_width=True):
-                                st.session_state[confirm_key] = True
-                                st.rerun()
+                                    st.session_state['season_management_state']['operation_in_progress'] = False
                         
-                        # キャンセルボタン（削除確認中の場合）
-                        if st.session_state.get(confirm_key, False):
-                            if st.button("取消", key=f"cancel_{season_key}_{hash(season_key)}", use_container_width=True):
-                                del st.session_state[confirm_key]
-                                st.rerun()
+                        with col2:
+                            delete_key = f"delete_{season_key}"
+                            confirm_key = f"confirm_delete_{season_key}"
+                            
+                            if st.session_state.get(confirm_key, False):
+                                if st.button("削除実行", key=f"exec_delete_{season_key}", type="primary", use_container_width=True, disabled=disabled):
+                                    st.session_state['season_management_state']['operation_in_progress'] = True
+                                    success = delete_season_sync(config_manager, season_key)
+                                    if success:
+                                        st.success(f"シーズン '{season_key}' を削除しました")
+                                        if confirm_key in st.session_state:
+                                            del st.session_state[confirm_key]
+                                        st.session_state['season_management_state']['operation_in_progress'] = False
+                                        st.rerun()
+                                    else:
+                                        st.error("削除に失敗しました")
+                                        st.session_state['season_management_state']['operation_in_progress'] = False
+                            else:
+                                if st.button("削除", key=delete_key, use_container_width=True, disabled=disabled):
+                                    st.session_state[confirm_key] = True
+                                    st.rerun()
+                            
+                            # 削除確認中の場合のキャンセルボタン
+                            if st.session_state.get(confirm_key, False):
+                                if st.button("キャンセル", key=f"cancel_{season_key}", use_container_width=True):
+                                    del st.session_state[confirm_key]
+                                    st.rerun()
+                        
+                        st.divider()
             else:
                 st.info("他のシーズンはありません")
 
-def create_new_season(config_manager: ConfigManager, season_key: str, season_name: str) -> bool:
-    """新しいシーズンを作成"""
+def create_new_season_sync(config_manager: ConfigManager, season_key: str, season_name: str) -> bool:
+    """新しいシーズンを同期的に作成"""
     try:
         spreadsheet_name = f"mahjong-score-tracker-{season_name}"
         
-        with st.spinner(f"シーズン '{season_key}' を作成中..."):
-            # シーズンを追加（自動でスプレッドシートも作成）
-            if config_manager.add_season(season_key, spreadsheet_name, auto_create=True):
-                # 現在のシーズンに設定
-                if config_manager.set_current_season(season_key):
-                    # 新しいシーズンのデータを初期化
-                    initialize_new_season_data()
-                    st.success(f"シーズン '{season_key}' を作成し、現在のシーズンに設定しました")
-                    return True
-                else:
-                    st.error("シーズンの設定に失敗しました")
+        # プログレスバー表示
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.text("シーズンを作成中...")
+        progress_bar.progress(25)
+        
+        # シーズンを追加
+        if config_manager.add_season(season_key, spreadsheet_name, auto_create=True):
+            progress_bar.progress(75)
+            status_text.text("シーズンを設定中...")
+            
+            # 現在のシーズンに設定
+            if config_manager.set_current_season(season_key):
+                progress_bar.progress(100)
+                status_text.text("完了")
+                
+                # 新しいシーズンのデータを初期化
+                initialize_new_season_data()
+                
+                # プログレスバーを削除
+                progress_bar.empty()
+                status_text.empty()
+                
+                return True
             else:
-                st.error("シーズンの作成に失敗しました")
-        
-        return False
-        
+                progress_bar.empty()
+                status_text.empty()
+                return False
+        else:
+            progress_bar.empty()
+            status_text.empty()
+            return False
+            
     except Exception as e:
         st.error(f"シーズン作成エラー: {e}")
         return False
 
-def switch_season(config_manager: ConfigManager, season_key: str) -> bool:
-    """シーズンを切り替え"""
+def switch_season_sync(config_manager: ConfigManager, season_key: str) -> bool:
+    """シーズンを同期的に切り替え"""
     try:
-        with st.spinner(f"シーズン '{season_key}' に切り替え中..."):
-            success = config_manager.set_current_season(season_key)
-            if success:
-                st.success(f"シーズン '{season_key}' に切り替えました")
-            else:
-                st.error("シーズンの切り替えに失敗しました")
-            return success
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.text(f"シーズン '{season_key}' に切り替え中...")
+        progress_bar.progress(50)
+        
+        success = config_manager.set_current_season(season_key)
+        
+        progress_bar.progress(100)
+        
+        if success:
+            status_text.text("切り替え完了")
+        else:
+            status_text.text("切り替え失敗")
+        
+        # クリーンアップ
+        progress_bar.empty()
+        status_text.empty()
+        
+        return success
+        
     except Exception as e:
         st.error(f"シーズン切り替えエラー: {e}")
+        return False
+
+def switch_season(config_manager: ConfigManager, season_key: str) -> bool:
+    """シーズンを切り替え（互換性のため）"""
+    return switch_season_sync(config_manager, season_key)
+
+def delete_season_sync(config_manager: ConfigManager, season_key: str) -> bool:
+    """シーズンを同期的に削除"""
+    try:
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.text(f"シーズン '{season_key}' を削除中...")
+        progress_bar.progress(50)
+        
+        success = config_manager.delete_season(season_key)
+        
+        progress_bar.progress(100)
+        
+        if success:
+            status_text.text("削除完了")
+        else:
+            status_text.text("削除失敗")
+        
+        # クリーンアップ
+        progress_bar.empty()
+        status_text.empty()
+        
+        return success
+        
+    except Exception as e:
+        st.error(f"シーズン削除エラー: {e}")
         return False
 
 def load_season_data(config_manager: ConfigManager, season_key: str):
@@ -238,23 +332,17 @@ def load_season_data(config_manager: ConfigManager, season_key: str):
                     if records:
                         converted_records = convert_sheets_records(records)
                         st.session_state['game_records'] = converted_records
-                        st.info(f"シーズン '{season_key}' から {len(converted_records)} 件の記録を読み込みました")
                     else:
                         st.session_state['game_records'] = []
-                        st.info(f"シーズン '{season_key}' にはまだ記録がありません")
                 else:
                     st.session_state['game_records'] = []
-                    st.warning("スプレッドシートに接続できませんでした")
             except Exception as e:
                 st.session_state['game_records'] = []
-                st.error(f"データ読み込みエラー: {e}")
         else:
             st.session_state['game_records'] = []
-            st.warning("Google Sheets設定が不完全です")
             
     except Exception as e:
         st.session_state['game_records'] = []
-        st.error(f"シーズンデータ読み込みエラー: {e}")
 
 def initialize_new_season_data():
     """新シーズンのデータを初期化"""
