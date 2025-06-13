@@ -1,5 +1,4 @@
-# score_extractor.py - Google Vision API Key + ChatGPT API専用版
-import cv2
+# score_extractor.py - Streamlit Cloud対応版
 import numpy as np
 import re
 import json
@@ -44,12 +43,12 @@ class MahjongScoreExtractor:
             raise
     
     def preprocess_image_for_vision(self, image: np.ndarray) -> bytes:
-        """Vision API用に画像を前処理して精度を向上"""
+        """Vision API用に画像を前処理して精度を向上（CV2を使わない版）"""
         # PILImageに変換
         if len(image.shape) == 3:
-            pil_image = Image.fromarray(image)
+            pil_image = Image.fromarray(image.astype('uint8'))
         else:
-            pil_image = Image.fromarray(image, mode='L')
+            pil_image = Image.fromarray(image.astype('uint8'), mode='L')
         
         # 解像度向上（小さい画像の場合は拡大）
         width, height = pil_image.size
@@ -57,7 +56,12 @@ class MahjongScoreExtractor:
             scale_factor = 1000 / width
             new_width = int(width * scale_factor)
             new_height = int(height * scale_factor)
-            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            # Streamlit Cloud対応: リサンプリング方法を変更
+            try:
+                pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            except AttributeError:
+                # 古いPillowバージョン対応
+                pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
         
         # コントラスト調整
         enhancer = ImageEnhance.Contrast(pil_image)
@@ -74,32 +78,32 @@ class MahjongScoreExtractor:
     
     def extract_text_with_vision_api_key(self, image: np.ndarray) -> str:
         """Google Vision API（APIキー認証）でテキスト抽出"""
-        # 画像を前処理
-        image_bytes = self.preprocess_image_for_vision(image)
-        
-        # Base64エンコード
-        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-        
-        # Vision API REST リクエスト
-        url = f"https://vision.googleapis.com/v1/images:annotate?key={self.vision_api_key}"
-        
-        payload = {
-            "requests": [{
-                "image": {
-                    "content": image_base64
-                },
-                "features": [{
-                    "type": "TEXT_DETECTION",
-                    "maxResults": 50
-                }],
-                "imageContext": {
-                    "languageHints": ["ja", "en"]
-                }
-            }]
-        }
-        
         try:
-            response = requests.post(url, json=payload)
+            # 画像を前処理
+            image_bytes = self.preprocess_image_for_vision(image)
+            
+            # Base64エンコード
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Vision API REST リクエスト
+            url = f"https://vision.googleapis.com/v1/images:annotate?key={self.vision_api_key}"
+            
+            payload = {
+                "requests": [{
+                    "image": {
+                        "content": image_base64
+                    },
+                    "features": [{
+                        "type": "TEXT_DETECTION",
+                        "maxResults": 50
+                    }],
+                    "imageContext": {
+                        "languageHints": ["ja", "en"]
+                    }
+                }]
+            }
+            
+            response = requests.post(url, json=payload, timeout=30)
             response.raise_for_status()
             
             result = response.json()
@@ -124,32 +128,35 @@ class MahjongScoreExtractor:
     
     def extract_text_with_vision_client(self, image: np.ndarray) -> str:
         """Google Vision API（サービスアカウント認証）でテキスト抽出"""
-        from google.cloud import vision
-        
-        # 画像を前処理
-        image_bytes = self.preprocess_image_for_vision(image)
-        
-        # Vision APIリクエスト
-        image_obj = vision.Image(content=image_bytes)
-        
-        # テキスト検出（日本語と英語対応）
-        response = self.vision_client.text_detection(
-            image=image_obj,
-            image_context=vision.ImageContext(
-                language_hints=['ja', 'en']
+        try:
+            from google.cloud import vision
+            
+            # 画像を前処理
+            image_bytes = self.preprocess_image_for_vision(image)
+            
+            # Vision APIリクエスト
+            image_obj = vision.Image(content=image_bytes)
+            
+            # テキスト検出（日本語と英語対応）
+            response = self.vision_client.text_detection(
+                image=image_obj,
+                image_context=vision.ImageContext(
+                    language_hints=['ja', 'en']
+                )
             )
-        )
-        
-        # エラーチェック
-        if response.error.message:
-            raise Exception(f'Vision API エラー: {response.error.message}')
-        
-        # テキスト抽出
-        texts = response.text_annotations
-        if texts:
-            return texts[0].description
-        else:
-            return ""
+            
+            # エラーチェック
+            if response.error.message:
+                raise Exception(f'Vision API エラー: {response.error.message}')
+            
+            # テキスト抽出
+            texts = response.text_annotations
+            if texts:
+                return texts[0].description
+            else:
+                return ""
+        except Exception as e:
+            raise Exception(f"Vision API エラー: {e}")
     
     def extract_text_with_vision_api(self, image: np.ndarray) -> str:
         """Vision APIでテキスト抽出（認証方式に応じて分岐）"""
@@ -160,9 +167,10 @@ class MahjongScoreExtractor:
     
     def analyze_with_chatgpt(self, extracted_text: str, image_base64: str) -> Dict:
         """ChatGPT APIで画像とテキストを解析"""
-        client = openai.OpenAI(api_key=self.openai_api_key)
-        
-        prompt = f"""
+        try:
+            client = openai.OpenAI(api_key=self.openai_api_key)
+            
+            prompt = f"""
 麻雀アプリ「雀魂」のスクリーンショットから、4名のプレイヤーのニックネームと点数を抽出してください。
 
 抽出されたテキスト:
@@ -186,43 +194,49 @@ class MahjongScoreExtractor:
 - JSONのみを返してください
 """
 
-        # ChatGPT APIリクエスト
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_base64}"
+            # ChatGPT APIリクエスト
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_base64}"
+                                }
                             }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=1000,
-            temperature=0.1  # 一貫性を高めるため低い温度設定
-        )
-        
-        result_text = response.choices[0].message.content.strip()
-        
-        # JSON抽出
-        try:
-            # JSONブロックを探す
-            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-            if json_match:
-                result_json = json.loads(json_match.group())
-                return result_json
-            else:
-                raise Exception("JSONレスポンスが見つかりません")
-        except json.JSONDecodeError as e:
-            raise Exception(f"JSON解析エラー: {e}")
+                        ]
+                    }
+                ],
+                max_tokens=1000,
+                temperature=0.1  # 一貫性を高めるため低い温度設定
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            
+            # JSON抽出
+            try:
+                # JSONブロックを探す
+                json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+                if json_match:
+                    result_json = json.loads(json_match.group())
+                    return result_json
+                else:
+                    raise Exception("JSONレスポンスが見つかりません")
+            except json.JSONDecodeError as e:
+                raise Exception(f"JSON解析エラー: {e}")
+        except Exception as e:
+            raise Exception(f"ChatGPT API エラー: {e}")
     
     def image_to_base64(self, image: np.ndarray) -> str:
         """画像をBase64エンコード"""
+        # numpy配列をPIL Imageに変換
+        if image.dtype != np.uint8:
+            image = image.astype(np.uint8)
+        
         pil_image = Image.fromarray(image)
         buffer = io.BytesIO()
         pil_image.save(buffer, format='PNG')
@@ -232,7 +246,8 @@ class MahjongScoreExtractor:
         """メイン解析関数"""
         try:
             # Step 1: Google Vision APIでテキスト抽出
-            extracted_text = self.extract_text_with_vision_api(image)
+            with st.spinner("画像からテキストを抽出中..."):
+                extracted_text = self.extract_text_with_vision_api(image)
             
             if not extracted_text.strip():
                 return {
@@ -244,10 +259,12 @@ class MahjongScoreExtractor:
                 }
             
             # Step 2: 画像をBase64エンコード
-            image_base64 = self.image_to_base64(image)
+            with st.spinner("画像を処理中..."):
+                image_base64 = self.image_to_base64(image)
             
             # Step 3: ChatGPT APIで解析
-            ai_result = self.analyze_with_chatgpt(extracted_text, image_base64)
+            with st.spinner("AIが画像を解析中..."):
+                ai_result = self.analyze_with_chatgpt(extracted_text, image_base64)
             
             # プレイヤーデータが4名未満の場合は空データで埋める
             players = ai_result.get('players', [])
@@ -267,9 +284,12 @@ class MahjongScoreExtractor:
             }
             
         except Exception as e:
+            error_message = str(e)
+            st.error(f"解析エラー: {error_message}")
+            
             return {
                 'success': False,
-                'message': f'解析エラー: {str(e)}',
+                'message': f'解析エラー: {error_message}',
                 'players': [
                     {'nickname': '', 'score': 25000},
                     {'nickname': '', 'score': 25000},
