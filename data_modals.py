@@ -1,10 +1,10 @@
 # data_modals.py
 import streamlit as st
 import pandas as pd
-from data_analyzer import MahjongDataAnalyzer
+from player_manager import PlayerManager
 
 def show_data_modal():
-    """データ表示モーダル - シンプルデザイン"""
+    """データ表示モーダル"""
     st.subheader("保存済み対局記録")
     
     if 'game_records' in st.session_state and st.session_state['game_records']:
@@ -72,92 +72,64 @@ def show_data_modal():
             st.rerun()
 
 def show_statistics_modal():
-    """統計表示モーダル - シンプルデザイン"""
+    """統計表示モーダル"""
     st.subheader("統計分析")
     
     if 'game_records' in st.session_state and st.session_state['game_records']:
-        analyzer = MahjongDataAnalyzer(st.session_state['game_records'])
+        player_manager = PlayerManager(st.session_state['game_records'])
         
         # 基本統計
-        stats = analyzer.calculate_basic_stats()
+        total_games = len(st.session_state['game_records'])
+        all_players = player_manager.get_all_player_names()
         
         # メトリクス表示
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("総対局数", f"{stats.get('total_games', 0)}回")
+            st.metric("総対局数", f"{total_games}回")
         
-        # 各プレイヤーの平均点数
-        if 'avg_scores' in stats:
-            avg_scores = stats['avg_scores']
-            player_metrics = [
-                ('P1平均', avg_scores.get('player1', 0)),
-                ('P2平均', avg_scores.get('player2', 0)),
-                ('P3平均', avg_scores.get('player3', 0))
-            ]
-            
-            for i, (label, value) in enumerate(player_metrics):
-                with [col2, col3, col4][i]:
-                    st.metric(label, f"{value:,.0f}点")
+        with col2:
+            st.metric("参加プレイヤー数", f"{len(all_players)}人")
         
-        # グラフ表示
-        tab1, tab2, tab3 = st.tabs(["点数推移", "平均点数比較", "順位分布"])
+        with col3:
+            if all_players:
+                # 最も対局数の多いプレイヤー
+                most_active = max(all_players, key=lambda p: player_manager.get_player_statistics(p)['total_games'])
+                most_active_games = player_manager.get_player_statistics(most_active)['total_games']
+                st.metric("最多対局者", f"{most_active}", f"{most_active_games}回")
         
-        with tab1:
-            trend_chart = analyzer.create_score_trend_chart()
-            if trend_chart.data:
-                st.plotly_chart(trend_chart, use_container_width=True)
-            else:
-                st.info("グラフを表示するデータがありません")
-        
-        with tab2:
-            avg_chart = analyzer.create_average_score_chart()
-            if avg_chart.data:
-                st.plotly_chart(avg_chart, use_container_width=True)
-            else:
-                st.info("グラフを表示するデータがありません")
-        
-        with tab3:
-            rank_chart = analyzer.create_rank_distribution_chart()
-            if rank_chart.data:
-                st.plotly_chart(rank_chart, use_container_width=True)
-            else:
-                st.info("グラフを表示するデータがありません")
+        with col4:
+            if all_players:
+                # 最高平均点数のプレイヤー
+                best_avg = max(all_players, key=lambda p: player_manager.get_player_statistics(p)['avg_score'])
+                best_avg_score = player_manager.get_player_statistics(best_avg)['avg_score']
+                st.metric("最高平均", f"{best_avg}", f"{best_avg_score:,.0f}点")
         
         # プレイヤー別詳細統計
         st.subheader("プレイヤー別詳細統計")
         
-        df = pd.DataFrame(st.session_state['game_records'])
-        player_stats = []
-        
-        for i in range(1, 5):
-            name_col = f'player{i}_name'
-            score_col = f'player{i}_score'
-            
-            if name_col in df.columns and score_col in df.columns:
-                names = df[name_col].dropna()
-                scores = pd.to_numeric(df[score_col], errors='coerce')
-                
-                # 最も多く使われている名前を取得
-                if not names.empty:
-                    most_common_name = names.mode().iloc[0] if len(names.mode()) > 0 else f"プレイヤー{i}"
-                else:
-                    most_common_name = f"プレイヤー{i}"
-                
-                if not scores.empty:
+        if all_players:
+            player_stats = []
+            for player_name in all_players:
+                stats = player_manager.get_player_statistics(player_name)
+                if stats['total_games'] > 0:
                     player_stats.append({
-                        'プレイヤー': most_common_name,
-                        '平均点数': f"{scores.mean():,.0f}点",
-                        '最高点数': f"{scores.max():,.0f}点",
-                        '最低点数': f"{scores.min():,.0f}点",
-                        '対局数': f"{len(scores.dropna())}回"
+                        'プレイヤー': player_name,
+                        '対局数': f"{stats['total_games']}回",
+                        '平均点数': f"{stats['avg_score']:,.0f}点",
+                        '平均順位': f"{stats['avg_rank']:.2f}位",
+                        '1位率': f"{stats['win_rate']:.1f}%",
+                        '最高点数': f"{stats['max_score']:,.0f}点",
+                        '最低点数': f"{stats['min_score']:,.0f}点"
                     })
-        
-        if player_stats:
-            stats_df = pd.DataFrame(player_stats)
-            st.dataframe(stats_df, use_container_width=True, hide_index=True)
+            
+            if player_stats:
+                stats_df = pd.DataFrame(player_stats)
+                st.dataframe(stats_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("統計データがありません")
         else:
-            st.info("統計データがありません")
+            st.info("プレイヤーデータがありません")
         
         # 閉じるボタン
         if st.button("統計表示を閉じる", use_container_width=True, key="close_stats_modal_btn"):
