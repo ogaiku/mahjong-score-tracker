@@ -571,7 +571,7 @@ def create_config_template():
             "current_season": "season1"
         },
         "app": {
-            "default_game_type": "四麻東風",
+            "default_game_type": "四麻半荘",
             "auto_save_to_sheets": True
         }
     }
