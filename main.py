@@ -1,4 +1,4 @@
-# main.py - プレイヤー管理タブ追加版
+# main.py - プレイヤーマスタ管理完全対応版
 import streamlit as st
 from ui_components import setup_sidebar
 from tab_pages import home_tab, screenshot_upload_tab, manual_input_tab, player_management_tab
@@ -86,14 +86,30 @@ st.markdown("""
         border-left-color: #ef4444;
         background-color: #fef2f2;
     }
+    
+    .sidebar .block-container {
+        padding-top: 1rem;
+    }
+    
+    .stSelectbox > div > div {
+        border-radius: 0.375rem;
+    }
+    
+    .stTextInput > div > div {
+        border-radius: 0.375rem;
+    }
+    
+    .stNumberInput > div > div {
+        border-radius: 0.375rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 def main():
     st.title("麻雀点数管理システム")
     
-    # 設定スプレッドシートとの同期を最初に実行
-    initialize_config_with_spreadsheet_sync()
+    # 設定とプレイヤーマスタの同期初期化
+    initialize_config_and_players()
     
     # サイドバー設定
     setup_sidebar()
@@ -116,14 +132,17 @@ def main():
     with tab4:
         player_management_tab()
 
-def initialize_config_with_spreadsheet_sync():
-    """設定スプレッドシートと同期して設定を初期化"""
+def initialize_config_and_players():
+    """設定とプレイヤーマスタを初期化"""
     if 'config_initialized' not in st.session_state:
         from config_manager import ConfigManager
         
         try:
             # 設定スプレッドシートからの同期を強制実行
             config_manager = ConfigManager()
+            
+            # プレイヤーマスタを先に読み込み
+            load_master_players(config_manager)
             
             # 設定同期後、現在のシーズンのデータも読み込み
             current_season = config_manager.get_current_season()
@@ -140,7 +159,52 @@ def initialize_config_with_spreadsheet_sync():
             st.session_state['config_initialized'] = True
             
         except Exception as e:
+            # エラーが発生してもアプリケーションを継続
             st.session_state['config_initialized'] = True
+            # デフォルト値を設定
+            if 'master_players' not in st.session_state:
+                st.session_state['master_players'] = []
+            if 'game_records' not in st.session_state:
+                st.session_state['game_records'] = []
+
+def load_master_players(config_manager=None):
+    """プレイヤーマスタを設定スプレッドシートから読み込み"""
+    try:
+        # 既にセッション状態にある場合は、強制リロードフラグをチェック
+        if ('master_players' in st.session_state and 
+            not st.session_state.get('force_reload_players', False)):
+            return
+        
+        if config_manager is None:
+            from config_manager import ConfigManager
+            config_manager = ConfigManager()
+        
+        from config_spreadsheet_manager import ConfigSpreadsheetManager
+        
+        sheets_creds = config_manager.load_sheets_credentials()
+        
+        if not sheets_creds:
+            st.session_state['master_players'] = []
+            return
+        
+        config_sheet_manager = ConfigSpreadsheetManager(sheets_creds)
+        if config_sheet_manager.connect():
+            players = config_sheet_manager.get_all_players()
+            st.session_state['master_players'] = players
+            
+            # リロードフラグをクリア
+            if 'force_reload_players' in st.session_state:
+                del st.session_state['force_reload_players']
+        else:
+            st.session_state['master_players'] = []
+            
+    except Exception as e:
+        st.session_state['master_players'] = []
+
+def force_reload_players():
+    """プレイヤーマスタの強制リロード"""
+    st.session_state['force_reload_players'] = True
+    load_master_players()
 
 def initialize_session_and_load_data():
     """セッション状態の初期化とGoogle Sheetsからのデータ読み込み"""
@@ -151,7 +215,13 @@ def initialize_session_and_load_data():
         'show_player_stats': False,
         'data_loaded': False,
         'last_sync_time': None,
-        'auto_sync_enabled': True
+        'auto_sync_enabled': True,
+        'delete_mode_enabled': False,
+        'season_management_state': {
+            'new_season_name': '',
+            'operation_in_progress': False,
+            'last_operation': None
+        }
     }
     
     for key, default_value in default_states.items():
@@ -191,5 +261,137 @@ def load_data_from_sheets_with_config_sync():
         if 'game_records' not in st.session_state:
             st.session_state['game_records'] = []
 
+def refresh_all_data():
+    """全データの手動リフレッシュ"""
+    try:
+        # プレイヤーマスタを強制リロード
+        force_reload_players()
+        
+        # 対局データを再読み込み
+        from config_manager import ConfigManager
+        from ui_components import load_season_data
+        
+        config_manager = ConfigManager()
+        current_season = config_manager.get_current_season()
+        
+        if current_season:
+            load_season_data(config_manager, current_season)
+            
+            # 同期時刻を更新
+            import time
+            st.session_state['last_sync_time'] = time.time()
+            st.session_state['data_loaded'] = True
+        
+        st.success("全データを更新しました")
+        
+    except Exception as e:
+        st.error(f"データ更新エラー: {e}")
+
+def get_app_status():
+    """アプリケーションの状態を取得"""
+    from config_manager import ConfigManager
+    
+    try:
+        config_manager = ConfigManager()
+        config_status = config_manager.get_config_status()
+        
+        # プレイヤーマスタの状態
+        master_players_count = len(st.session_state.get('master_players', []))
+        
+        # 対局記録の状態
+        game_records_count = len(st.session_state.get('game_records', []))
+        
+        return {
+            'config_initialized': st.session_state.get('config_initialized', False),
+            'data_loaded': st.session_state.get('data_loaded', False),
+            'current_season': config_status.get('current_season', ''),
+            'seasons_count': config_status.get('season_count', 0),
+            'master_players_count': master_players_count,
+            'game_records_count': game_records_count,
+            'sheets_connected': config_status.get('sheets_credentials', False),
+            'spreadsheet_configured': config_status.get('spreadsheet_id', False),
+            'last_sync_time': st.session_state.get('last_sync_time'),
+        }
+        
+    except Exception as e:
+        return {
+            'error': str(e),
+            'config_initialized': False,
+            'data_loaded': False
+        }
+
+def cleanup_session():
+    """セッション状態のクリーンアップ"""
+    # 一時的なフラグをクリア
+    temporary_keys = [
+        'delete_mode_enabled',
+        'force_reload_players',
+        'analysis_result',
+        'screenshot_uploader_key'
+    ]
+    
+    for key in temporary_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+
+def handle_app_error(error_message, error_type="general"):
+    """アプリケーションエラーの統一処理"""
+    error_messages = {
+        "config": "設定の読み込みに失敗しました",
+        "sheets": "Google Sheetsとの接続に失敗しました", 
+        "players": "プレイヤーデータの読み込みに失敗しました",
+        "data": "対局データの読み込みに失敗しました",
+        "general": "予期しないエラーが発生しました"
+    }
+    
+    base_message = error_messages.get(error_type, error_messages["general"])
+    
+    st.error(f"{base_message}: {error_message}")
+    
+    # エラー詳細を展開可能な形で表示
+    with st.expander("エラー詳細"):
+        st.code(error_message)
+        
+        # アプリケーション状態の表示
+        status = get_app_status()
+        st.json(status)
+
+# グローバルエラーハンドラー（デバッグ用）
+def setup_error_handling():
+    """エラーハンドリングの設定"""
+    import sys
+    import traceback
+    
+    def exception_handler(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        
+        error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        
+        # Streamlitアプリが実行中の場合のみエラー表示
+        try:
+            handle_app_error(error_msg, "general")
+        except:
+            # Streamlitコンテキスト外の場合は標準エラー出力
+            print(f"Critical Error: {error_msg}")
+    
+    sys.excepthook = exception_handler
+
 if __name__ == "__main__":
-    main()
+    # エラーハンドリングを設定（開発時のみ）
+    # setup_error_handling()
+    
+    try:
+        main()
+    except Exception as e:
+        handle_app_error(str(e), "general")
+        
+        # アプリケーションの継続を試行
+        st.warning("エラーが発生しましたが、アプリケーションを継続します")
+        
+        # 基本的な状態を初期化
+        if 'master_players' not in st.session_state:
+            st.session_state['master_players'] = []
+        if 'game_records' not in st.session_state:
+            st.session_state['game_records'] = []

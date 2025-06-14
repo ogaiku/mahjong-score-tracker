@@ -1,4 +1,4 @@
-# config_spreadsheet_manager.py - 設定スプレッドシート管理
+# config_spreadsheet_manager.py - プレイヤーマスタ管理機能完全版
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import Dict, List, Optional
@@ -7,12 +7,13 @@ import json
 from datetime import datetime
 
 class ConfigSpreadsheetManager:
-    """設定用スプレッドシート管理クラス"""
+    """設定用スプレッドシート管理クラス（プレイヤーマスタ対応）"""
     
     def __init__(self, credentials_dict: Dict = None):
         self.credentials_dict = credentials_dict
         self.client = None
         self.config_sheet = None
+        self.player_sheet = None
         
         # 設定用スプレッドシートID（固定）
         self.config_spreadsheet_id = "10UTxzbPu-yARrO0vcyWC8a529zlDYLZRN9d6kqC2w3g"
@@ -39,7 +40,18 @@ class ConfigSpreadsheetManager:
             self.client = gspread.authorize(credentials)
             
             # 設定用スプレッドシートを開く
-            self.config_sheet = self.client.open_by_key(self.config_spreadsheet_id).sheet1
+            spreadsheet = self.client.open_by_key(self.config_spreadsheet_id)
+            
+            # シーズン設定シート（既存）
+            self.config_sheet = spreadsheet.sheet1
+            
+            # プレイヤーマスタシートを取得または作成
+            try:
+                self.player_sheet = spreadsheet.worksheet('プレイヤーマスタ')
+            except gspread.WorksheetNotFound:
+                # プレイヤーマスタシートが存在しない場合は作成
+                self.player_sheet = spreadsheet.add_worksheet(title='プレイヤーマスタ', rows=1000, cols=5)
+                self._initialize_player_sheet()
             
             # 初回アクセス時にヘッダーを設定
             self._initialize_headers()
@@ -77,12 +89,182 @@ class ConfigSpreadsheetManager:
             st.error(f"設定ヘッダー初期化エラー: {e}")
             return False
     
+    def _initialize_player_sheet(self) -> bool:
+        """プレイヤーマスタシートのヘッダーを初期化"""
+        try:
+            headers = [
+                "user_id",           # ユーザーID（サービスアカウントのemail）
+                "player_name",       # プレイヤー名
+                "created_at",        # 作成日時
+                "updated_at"         # 更新日時
+            ]
+            self.player_sheet.clear()
+            self.player_sheet.append_row(headers)
+            return True
+            
+        except Exception as e:
+            st.error(f"プレイヤーシートヘッダー初期化エラー: {e}")
+            return False
+    
     def get_user_id(self) -> str:
         """ユーザーIDを取得（サービスアカウントのemail）"""
         if self.credentials_dict:
             return self.credentials_dict.get('client_email', 'unknown')
         return 'unknown'
     
+    def add_player(self, player_name: str) -> bool:
+        """プレイヤーをマスタリストに追加"""
+        try:
+            if not self.player_sheet:
+                if not self.connect():
+                    return False
+            
+            user_id = self.get_user_id()
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # 既存チェック
+            all_records = self.player_sheet.get_all_records()
+            for record in all_records:
+                if (record.get('user_id') == user_id and 
+                    record.get('player_name') == player_name):
+                    return False  # 既に存在する
+            
+            # 新しいプレイヤーを追加
+            new_row_data = [
+                user_id,
+                player_name,
+                current_time,
+                current_time
+            ]
+            
+            self.player_sheet.append_row(new_row_data)
+            return True
+            
+        except Exception as e:
+            st.error(f"プレイヤー追加エラー: {e}")
+            return False
+    
+    def delete_player(self, player_name: str) -> bool:
+        """プレイヤーをマスタリストから削除"""
+        try:
+            if not self.player_sheet:
+                if not self.connect():
+                    return False
+            
+            user_id = self.get_user_id()
+            all_records = self.player_sheet.get_all_records()
+            
+            for i, record in enumerate(all_records):
+                if (record.get('user_id') == user_id and 
+                    record.get('player_name') == player_name):
+                    row_index = i + 2  # ヘッダー行を考慮
+                    self.player_sheet.delete_rows(row_index)
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            st.error(f"プレイヤー削除エラー: {e}")
+            return False
+    
+    def get_all_players(self) -> List[str]:
+        """ユーザーの全プレイヤーリストを取得"""
+        try:
+            if not self.player_sheet:
+                if not self.connect():
+                    return []
+            
+            user_id = self.get_user_id()
+            all_records = self.player_sheet.get_all_records()
+            
+            players = []
+            for record in all_records:
+                if record.get('user_id') == user_id:
+                    player_name = record.get('player_name')
+                    if player_name:
+                        players.append(player_name)
+            
+            return sorted(players)
+            
+        except Exception as e:
+            st.error(f"プレイヤーリスト取得エラー: {e}")
+            return []
+    
+    def update_player(self, old_name: str, new_name: str) -> bool:
+        """プレイヤー名を更新"""
+        try:
+            if not self.player_sheet:
+                if not self.connect():
+                    return False
+            
+            user_id = self.get_user_id()
+            all_records = self.player_sheet.get_all_records()
+            
+            for i, record in enumerate(all_records):
+                if (record.get('user_id') == user_id and 
+                    record.get('player_name') == old_name):
+                    row_index = i + 2  # ヘッダー行を考慮
+                    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    # プレイヤー名と更新日時を更新
+                    self.player_sheet.update_cell(row_index, 2, new_name)      # player_name列
+                    self.player_sheet.update_cell(row_index, 4, current_time)  # updated_at列
+                    
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            st.error(f"プレイヤー更新エラー: {e}")
+            return False
+    
+    def player_exists(self, player_name: str) -> bool:
+        """プレイヤーが存在するかチェック"""
+        try:
+            if not self.player_sheet:
+                if not self.connect():
+                    return False
+            
+            user_id = self.get_user_id()
+            all_records = self.player_sheet.get_all_records()
+            
+            for record in all_records:
+                if (record.get('user_id') == user_id and 
+                    record.get('player_name') == player_name):
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            st.error(f"プレイヤー存在チェックエラー: {e}")
+            return False
+    
+    def get_player_info(self, player_name: str) -> Optional[Dict]:
+        """プレイヤー情報を取得"""
+        try:
+            if not self.player_sheet:
+                if not self.connect():
+                    return None
+            
+            user_id = self.get_user_id()
+            all_records = self.player_sheet.get_all_records()
+            
+            for record in all_records:
+                if (record.get('user_id') == user_id and 
+                    record.get('player_name') == player_name):
+                    return {
+                        'name': record.get('player_name'),
+                        'created_at': record.get('created_at'),
+                        'updated_at': record.get('updated_at')
+                    }
+            
+            return None
+            
+        except Exception as e:
+            st.error(f"プレイヤー情報取得エラー: {e}")
+            return None
+    
+    # 既存のシーズン管理メソッド
     def save_season_config(self, season_key: str, season_name: str, 
                           spreadsheet_id: str, spreadsheet_url: str, 
                           is_current: bool = False) -> bool:
@@ -265,3 +447,28 @@ class ConfigSpreadsheetManager:
             
         except Exception as e:
             return False
+    
+    def get_statistics(self) -> Dict:
+        """統計情報を取得"""
+        try:
+            user_id = self.get_user_id()
+            
+            # シーズン統計
+            seasons_data = self.load_user_seasons()
+            seasons_count = len(seasons_data.get('seasons', {}))
+            
+            # プレイヤー統計
+            players = self.get_all_players()
+            players_count = len(players)
+            
+            return {
+                'user_id': user_id,
+                'seasons_count': seasons_count,
+                'current_season': seasons_data.get('current_season', ''),
+                'players_count': players_count,
+                'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+        except Exception as e:
+            st.error(f"統計情報取得エラー: {e}")
+            return {}

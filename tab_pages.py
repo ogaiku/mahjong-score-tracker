@@ -1,4 +1,4 @@
-# tab_pages.py - 簡素化版（プレイヤー登録分離）
+# tab_pages.py - 完全版（不要な警告メッセージのみ削除）
 import streamlit as st
 import pandas as pd
 from PIL import Image
@@ -134,14 +134,14 @@ def home_tab():
             )
     
     else:
-        st.info("記録がありません。まずプレイヤーを登録して対局データを追加してください。")
+        st.info("記録がありません。スクリーンショット解析または手動入力で対局データを追加してください。")
         
         # クイックスタートガイド
         st.subheader("始め方")
         
         st.markdown("""
-        1. プレイヤー管理タブでプレイヤーを登録
-        2. スクリーンショット解析または手動入力で対局記録を追加
+        1. **スクリーンショット解析**または**手動入力**で対局記録を追加
+        2. プレイヤー名は初回入力時に自動登録されます
         3. 統計データの確認
         """)
     
@@ -157,19 +157,6 @@ def home_tab():
 
 def screenshot_upload_tab():
     st.header("スクリーンショット解析")
-    
-    # プレイヤー登録状況をチェック
-    if 'game_records' in st.session_state and st.session_state['game_records']:
-        from player_manager import PlayerManager
-        player_manager = PlayerManager(st.session_state['game_records'])
-        existing_players = player_manager.get_all_player_names()
-    else:
-        existing_players = []
-    
-    if not existing_players:
-        st.warning("先にプレイヤーを登録してください")
-        st.info("「プレイヤー管理」タブでプレイヤーを登録してから、スクリーンショット解析をご利用ください。")
-        return
     
     # ファイルアップローダーキーの管理
     if 'screenshot_uploader_key' not in st.session_state:
@@ -249,6 +236,15 @@ def create_extraction_form():
             st.rerun()
         
         if submitted:
+            # 新規プレイヤーがある場合は自動登録
+            if 'pending_new_players' in st.session_state:
+                for new_player in st.session_state['pending_new_players']:
+                    if new_player.strip():
+                        from input_forms import register_new_player
+                        register_new_player(new_player.strip())
+                # 登録後にpending_new_playersをクリア
+                del st.session_state['pending_new_players']
+            
             valid_players = [name for name in player_names if name.strip()]
             if len(valid_players) >= 1:
                 if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
@@ -262,21 +258,17 @@ def manual_input_tab():
     st.header("手動データ入力")
     
     # プレイヤー登録状況をチェック
-    if 'game_records' in st.session_state and st.session_state['game_records']:
-        from player_manager import PlayerManager
-        player_manager = PlayerManager(st.session_state['game_records'])
-        existing_players = player_manager.get_all_player_names()
-    else:
-        existing_players = []
-    
-    if not existing_players:
-        st.warning("先にプレイヤーを登録してください")
-        st.info("「プレイヤー管理」タブでプレイヤーを登録してから、手動入力をご利用ください。")
-        return
+    from input_forms import get_registered_players
+    existing_players = get_registered_players()
     
     with st.form("manual_input_form", clear_on_submit=True):
         st.subheader("プレイヤー選択")
-        player_names = create_player_input_fields_simple("manual")
+        # 既存プレイヤーがいる場合は選択フィールド、いない場合は登録機能付きフィールド
+        if existing_players:
+            player_names = create_player_input_fields_simple("manual")
+        else:
+            # プレイヤーが未登録の場合は手動入力フィールドを表示
+            player_names = create_manual_player_input_fields("manual")
         
         st.subheader("点数入力")
         scores = create_score_input_fields(player_names, prefix="manual")
@@ -288,12 +280,57 @@ def manual_input_tab():
         submitted = st.form_submit_button("記録を保存", type="primary", use_container_width=True)
         
         if submitted:
+            # 新規プレイヤーがある場合は自動登録
+            if 'pending_new_players' in st.session_state:
+                for new_player in st.session_state['pending_new_players']:
+                    if new_player.strip():
+                        from input_forms import register_new_player
+                        register_new_player(new_player.strip())
+                # 登録後にpending_new_playersをクリア
+                del st.session_state['pending_new_players']
+            
+            # プレイヤー名の入力チェック
             valid_players = [name for name in player_names if name.strip()]
             if len(valid_players) >= 1:
+                # 新しいプレイヤー名があれば自動登録
+                register_new_players_if_needed(player_names)
+                
                 if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
                     st.rerun()
             else:
-                st.error("少なくとも1名のプレイヤーを選択してください")
+                st.error("少なくとも1名のプレイヤーを入力してください")
+
+def create_manual_player_input_fields(prefix="default"):
+    """手動プレイヤー入力フィールド（プレイヤー未登録時用）"""
+    cols = st.columns(4)
+    player_names = []
+    
+    for i, col in enumerate(cols):
+        with col:
+            player_name = st.text_input(
+                f"プレイヤー{i+1}",
+                placeholder="プレイヤー名を入力",
+                key=f"{prefix}_manual_player_{i}",
+                label_visibility="collapsed"
+            )
+            player_names.append(player_name)
+    
+    return player_names
+
+def register_new_players_if_needed(player_names):
+    """新しいプレイヤー名があれば自動登録"""
+    from input_forms import get_registered_players, register_new_player
+    
+    existing_players = get_registered_players()
+    
+    for name in player_names:
+        if name.strip() and name.strip() not in existing_players:
+            try:
+                # プレイヤーを自動登録（エラーメッセージは表示しない）
+                register_new_player(name.strip())
+            except:
+                # 登録に失敗してもプロセスを継続
+                pass
 
 def player_management_tab():
     """プレイヤー管理タブ"""
