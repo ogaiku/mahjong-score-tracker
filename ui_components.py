@@ -1,4 +1,4 @@
-# ui_components.py - シーズン管理修正版（選択ボタン削除・重複メッセージ修正）
+# ui_components.py - 完全版（自動同期対応）
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -20,6 +20,12 @@ def setup_sidebar():
     # データ管理セクション
     st.sidebar.subheader("データ管理")
     
+    # 自動同期状態表示
+    if st.session_state.get('auto_sync_enabled', True):
+        st.sidebar.success("自動同期: ON")
+    else:
+        st.sidebar.warning("自動同期: OFF")
+    
     # データ同期ボタン
     if st.sidebar.button("データ同期", use_container_width=True, help="Google Sheetsからデータを読み込み"):
         sync_data_from_sheets(config_manager)
@@ -28,6 +34,16 @@ def setup_sidebar():
     if 'game_records' in st.session_state and st.session_state['game_records']:
         record_count = len(st.session_state['game_records'])
         st.sidebar.metric("読み込み済み記録", f"{record_count}件")
+        
+        # 最後の同期時刻
+        last_sync = st.session_state.get('last_sync_time')
+        if last_sync:
+            import time
+            time_diff = int(time.time() - last_sync)
+            if time_diff < 60:
+                st.sidebar.caption(f"{time_diff}秒前に同期")
+            else:
+                st.sidebar.caption(f"{time_diff//60}分前に同期")
         
         # Google Sheets連携状況
         sheets_status = check_sheets_sync_status(config_manager)
@@ -343,6 +359,10 @@ def sync_data_from_sheets(config_manager: ConfigManager):
             with st.spinner("同期中..."):
                 load_season_data(config_manager, current_season)
                 
+                # 同期時刻を更新
+                import time
+                st.session_state['last_sync_time'] = time.time()
+                
                 if 'game_records' in st.session_state and st.session_state['game_records']:
                     record_count = len(st.session_state['game_records'])
                     st.success(f"{record_count}件同期完了")
@@ -455,7 +475,7 @@ def display_extraction_results():
     st.success("解析完了")
 
 def save_game_record_with_names(players_data, game_date, game_time, game_type, notes):
-    """対局記録をGoogle Sheetsに保存（重複メッセージ修正版）"""
+    """対局記録をGoogle Sheetsに保存（自動同期対応版）"""
     valid_players = [p for p in players_data if p['name'].strip()]
     if len(valid_players) < 1:
         st.error("少なくとも1名のプレイヤー名を入力してください")
@@ -490,23 +510,33 @@ def save_game_record_with_names(players_data, game_date, game_time, game_type, n
         return False
     
     try:
-        sheet_manager = SpreadsheetManager(sheets_creds)
-        if not sheet_manager.connect(spreadsheet_id):
-            st.error("スプレッドシートへの接続に失敗しました")
-            return False
-        
-        if sheet_manager.add_record(game_data):
-            # 成功メッセージを1回だけ表示
-            st.success("記録を保存しました")
+        with st.spinner("記録を保存中..."):
+            sheet_manager = SpreadsheetManager(sheets_creds)
+            if not sheet_manager.connect(spreadsheet_id):
+                st.error("スプレッドシートへの接続に失敗しました")
+                return False
             
-            if 'game_records' not in st.session_state:
-                st.session_state['game_records'] = []
-            st.session_state['game_records'].append(game_data)
-            
-            return True
-        else:
-            st.error("記録の追加に失敗しました")
-            return False
+            if sheet_manager.add_record(game_data):
+                # ローカルセッション状態に即座に追加
+                if 'game_records' not in st.session_state:
+                    st.session_state['game_records'] = []
+                st.session_state['game_records'].append(game_data)
+                
+                # 同期時刻を更新
+                import time
+                st.session_state['last_sync_time'] = time.time()
+                
+                # 成功メッセージを1回だけ表示
+                st.success("記録を保存しました")
+                
+                # 保存後のフィードバック
+                total_records = len(st.session_state['game_records'])
+                st.info(f"総記録数: {total_records}件")
+                
+                return True
+            else:
+                st.error("記録の追加に失敗しました")
+                return False
             
     except Exception as e:
         error_message = str(e)

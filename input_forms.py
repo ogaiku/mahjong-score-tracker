@@ -1,4 +1,4 @@
-# input_forms.py
+# input_forms.py - 完全版
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
@@ -223,7 +223,7 @@ def show_input_confirmation(player_names, scores):
         return False
 
 def save_game_record(player_names, scores, game_date, game_time, game_type, notes=""):
-    """対局記録保存"""
+    """対局記録保存（自動同期対応版）"""
     from ui_components import save_game_record_with_names
     
     players_data = []
@@ -235,5 +235,4 @@ def save_game_record(player_names, scores, game_date, game_time, game_type, note
         st.error("少なくとも1名のプレイヤー名を入力してください")
         return False
     
-    save_game_record_with_names(players_data, game_date, game_time, game_type, notes)
-    return True
+    return save_game_record_with_names(players_data, game_date, game_time, game_type, notes)
