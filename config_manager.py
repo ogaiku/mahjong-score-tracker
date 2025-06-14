@@ -1,11 +1,11 @@
-# config_manager.py - セッション状態対応版
+# config_manager.py - 設定スプレッドシート対応版
 import json
 import os
 from typing import Dict, Optional, Union
 import streamlit as st
 
 class ConfigManager:
-    """設定ファイルを管理するクラス（セッション状態対応）"""
+    """設定ファイルを管理するクラス（設定スプレッドシート対応）"""
     
     def __init__(self, config_file: str = "config.json"):
         self.config_file = config_file
@@ -20,34 +20,102 @@ class ConfigManager:
         """設定ファイルまたはStreamlit Secretsから設定を読み込み"""
         # まずStreamlit Secretsから読み込みを試行
         if hasattr(st, 'secrets') and len(st.secrets) > 0:
-            return self.load_from_secrets()
-        
-        # Secretsがない場合は従来のconfig.jsonから読み込み
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                
-                # 古い設定形式から新しい形式に移行
-                if self._needs_migration(config):
-                    config = self._migrate_config(config)
-                    self.save_config(config)
-                
-                return config
-            except Exception as e:
-                st.error(f"設定ファイル読み込みエラー: {e}")
-                return self.get_default_config()
+            base_config = self.load_from_secrets()
         else:
-            return self.create_initial_setup()
+            # Secretsがない場合は従来のconfig.jsonから読み込み
+            if os.path.exists(self.config_file):
+                try:
+                    with open(self.config_file, 'r', encoding='utf-8') as f:
+                        base_config = json.load(f)
+                except Exception as e:
+                    st.error(f"設定ファイル読み込みエラー: {e}")
+                    base_config = self.get_default_config()
+            else:
+                base_config = self.get_default_config()
+        
+        # 設定スプレッドシートからシーズン情報を読み込み
+        self._load_seasons_from_spreadsheet(base_config)
+        
+        return base_config
     
-    def create_initial_setup(self) -> Dict:
-        """初期設定（自動作成なし）"""
-        default_config = self.get_default_config()
-        self.save_config(default_config)
-        return default_config
+    def _load_seasons_from_spreadsheet(self, config: Dict):
+        """設定スプレッドシートからシーズン情報を読み込み"""
+        try:
+            # Google Sheets認証情報が利用可能な場合のみ実行
+            sheets_creds = self._get_sheets_credentials_dict(config)
+            if not sheets_creds:
+                return
+            
+            from config_spreadsheet_manager import ConfigSpreadsheetManager
+            
+            config_manager = ConfigSpreadsheetManager(sheets_creds)
+            if config_manager.connect():
+                user_seasons = config_manager.load_user_seasons()
+                
+                if user_seasons:
+                    # Google Sheetsの設定をローカル設定に統合
+                    if "google_sheets" not in config:
+                        config["google_sheets"] = {}
+                    
+                    config["google_sheets"]["seasons"] = user_seasons.get('seasons', {})
+                    config["google_sheets"]["current_season"] = user_seasons.get('current_season', '')
+                    
+                    # セッション状態に保存（設定スプレッドシートとの同期済みフラグ）
+                    st.session_state['config_synced_with_spreadsheet'] = True
+                else:
+                    # 設定スプレッドシートにデータがない場合はローカル設定を維持
+                    if "google_sheets" not in config:
+                        config["google_sheets"] = {"seasons": {}, "current_season": ""}
+                    
+        except Exception as e:
+            # エラーが発生してもローカル設定は維持
+            if "google_sheets" not in config:
+                config["google_sheets"] = {"seasons": {}, "current_season": ""}
+    
+    def _get_sheets_credentials_dict(self, config: Dict) -> Optional[Dict]:
+        """Google Sheets認証情報を取得"""
+        # まずStreamlit Secretsから読み込みを試行
+        if hasattr(st, 'secrets') and 'google_sheets' in st.secrets:
+            try:
+                sheets_secrets = st.secrets['google_sheets']
+                
+                # private_keyの改行を正しく処理
+                private_key = sheets_secrets.get('private_key', '').strip(' "')
+                if private_key and '\\n' in private_key:
+                    private_key = private_key.replace('\\n', '\n')
+                
+                credentials_dict = {
+                    "type": sheets_secrets.get('type', '').strip(' "'),
+                    "project_id": sheets_secrets.get('project_id', '').strip(' "'),
+                    "private_key": private_key,
+                    "client_email": sheets_secrets.get('client_email', '').strip(' "'),
+                    "client_id": "",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+                }
+                
+                # 必要なフィールドがすべて存在するかチェック
+                required_fields = ['type', 'project_id', 'private_key', 'client_email']
+                if all(credentials_dict.get(field) for field in required_fields):
+                    return credentials_dict
+                
+            except Exception:
+                pass
+        
+        # Secretsがない場合はJSONファイルから読み込み
+        creds_file = config.get("google_sheets", {}).get("credentials_file", "")
+        if creds_file and os.path.exists(creds_file):
+            try:
+                with open(creds_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        
+        return None
     
     def load_from_secrets(self) -> Dict:
-        """Streamlit Secretsから設定を読み込み（自動作成なし）"""
+        """Streamlit Secretsから設定を読み込み"""
         try:
             config = {
                 "openai": {
@@ -74,29 +142,6 @@ class ConfigManager:
             st.error(f"Secrets読み込みエラー: {e}")
             return self.get_default_config()
     
-    def _needs_migration(self, config: Dict) -> bool:
-        """設定の移行が必要かチェック"""
-        sheets_config = config.get("google_sheets", {})
-        return "spreadsheet_id" in sheets_config and "seasons" not in sheets_config
-    
-    def _migrate_config(self, config: Dict) -> Dict:
-        """古い設定形式から新しい形式に移行"""
-        sheets_config = config.get("google_sheets", {})
-        old_spreadsheet_id = sheets_config.get("spreadsheet_id", "")
-        
-        if old_spreadsheet_id:
-            sheets_config["seasons"] = {
-                "season1": {
-                    "name": "mahjong-score-tracker season1",
-                    "spreadsheet_id": old_spreadsheet_id,
-                    "url": f"https://docs.google.com/spreadsheets/d/{old_spreadsheet_id}/edit"
-                }
-            }
-            sheets_config["current_season"] = "season1"
-            del sheets_config["spreadsheet_id"]
-        
-        return config
-    
     def get_default_config(self) -> Dict:
         """デフォルト設定を返す（空のシーズン設定）"""
         return {
@@ -120,14 +165,17 @@ class ConfigManager:
         }
     
     def save_config(self, config: Optional[Dict] = None) -> bool:
-        """設定を保存（セッション状態とファイル両方）"""
+        """設定を保存（セッション状態とスプレッドシート両方）"""
         config_to_save = config if config is not None else self.config
         
         # セッション状態を更新
         st.session_state['config_data'] = config_to_save
         self.config = config_to_save
         
-        # Streamlit Cloud環境ではファイル保存しない
+        # 設定スプレッドシートにシーズン情報を保存
+        self._save_seasons_to_spreadsheet(config_to_save)
+        
+        # Streamlit Cloud環境ではローカルファイル保存しない
         if hasattr(st, 'secrets') and len(st.secrets) > 0:
             return True
         
@@ -140,6 +188,137 @@ class ConfigManager:
             st.error(f"設定ファイル保存エラー: {e}")
             return False
     
+    def _save_seasons_to_spreadsheet(self, config: Dict):
+        """シーズン情報を設定スプレッドシートに保存"""
+        try:
+            sheets_creds = self._get_sheets_credentials_dict(config)
+            if not sheets_creds:
+                return
+            
+            from config_spreadsheet_manager import ConfigSpreadsheetManager
+            
+            config_manager = ConfigSpreadsheetManager(sheets_creds)
+            if config_manager.connect():
+                seasons = config.get("google_sheets", {}).get("seasons", {})
+                current_season = config.get("google_sheets", {}).get("current_season", "")
+                
+                # 各シーズンを設定スプレッドシートに保存
+                for season_key, season_info in seasons.items():
+                    is_current = (season_key == current_season)
+                    config_manager.save_season_config(
+                        season_key=season_key,
+                        season_name=season_info.get('name', season_key),
+                        spreadsheet_id=season_info.get('spreadsheet_id', ''),
+                        spreadsheet_url=season_info.get('url', ''),
+                        is_current=is_current
+                    )
+                
+        except Exception as e:
+            # エラーが発生してもローカル設定は保存
+            pass
+    
+    def add_season(self, season_key: str, name: str, auto_create: bool = True) -> bool:
+        """新しいシーズンを追加（設定スプレッドシート対応）"""
+        try:
+            # 既存のシーズンキーをチェック
+            existing_seasons = self.get_all_seasons()
+            if season_key in existing_seasons:
+                st.error(f"シーズンキー '{season_key}' は既に存在します")
+                return False
+            
+            # スプレッドシートを作成
+            result = self._create_new_spreadsheet(name)
+            if result['success']:
+                spreadsheet_id = result['spreadsheet_id']
+                url = result['url']
+            else:
+                st.error(f"スプレッドシート作成に失敗: {result.get('error', '不明なエラー')}")
+                return False
+            
+            # シーズン情報を追加
+            if "google_sheets" not in self.config:
+                self.config["google_sheets"] = {}
+            if "seasons" not in self.config["google_sheets"]:
+                self.config["google_sheets"]["seasons"] = {}
+            
+            self.config["google_sheets"]["seasons"][season_key] = {
+                "name": name,
+                "spreadsheet_id": spreadsheet_id,
+                "url": url,
+                "created_at": self._get_current_timestamp()
+            }
+            
+            # 初回シーズンの場合は現在のシーズンに設定
+            current_season = self.get_current_season()
+            if not current_season:
+                self.config["google_sheets"]["current_season"] = season_key
+            
+            # 設定を保存（設定スプレッドシートにも保存される）
+            return self.save_config()
+        except Exception as e:
+            st.error(f"シーズン追加エラー: {e}")
+            return False
+    
+    def set_current_season(self, season_key: str) -> bool:
+        """現在のシーズンを変更（設定スプレッドシート対応）"""
+        try:
+            seasons = self.get_all_seasons()
+            if season_key not in seasons:
+                st.error(f"シーズン '{season_key}' が見つかりません")
+                return False
+            
+            self.config.setdefault("google_sheets", {})["current_season"] = season_key
+            
+            # 設定スプレッドシートにも保存
+            sheets_creds = self._get_sheets_credentials_dict(self.config)
+            if sheets_creds:
+                try:
+                    from config_spreadsheet_manager import ConfigSpreadsheetManager
+                    config_manager = ConfigSpreadsheetManager(sheets_creds)
+                    if config_manager.connect():
+                        config_manager.set_current_season(season_key)
+                except Exception:
+                    pass  # エラーが発生してもローカル設定は更新
+            
+            return self.save_config()
+        except Exception as e:
+            st.error(f"シーズン変更エラー: {e}")
+            return False
+    
+    def delete_season(self, season_key: str) -> bool:
+        """シーズンを削除（設定スプレッドシート対応）"""
+        try:
+            current_season = self.get_current_season()
+            if season_key == current_season:
+                st.error("現在のシーズンは削除できません")
+                return False
+            
+            seasons = self.get_all_seasons()
+            if season_key not in seasons:
+                st.error(f"シーズン '{season_key}' が見つかりません")
+                return False
+            
+            # ローカル設定からシーズンを削除
+            del self.config["google_sheets"]["seasons"][season_key]
+            
+            # 設定スプレッドシートからも削除
+            sheets_creds = self._get_sheets_credentials_dict(self.config)
+            if sheets_creds:
+                try:
+                    from config_spreadsheet_manager import ConfigSpreadsheetManager
+                    config_manager = ConfigSpreadsheetManager(sheets_creds)
+                    if config_manager.connect():
+                        config_manager.delete_season(season_key)
+                except Exception:
+                    pass  # エラーが発生してもローカル設定は更新
+            
+            return self.save_config()
+            
+        except Exception as e:
+            st.error(f"シーズン削除エラー: {e}")
+            return False
+    
+    # 以下は既存のメソッド（変更なし）
     def get_openai_api_key(self) -> str:
         """OpenAI API Keyを取得"""
         return self.config.get("openai", {}).get("api_key", "")
@@ -175,58 +354,57 @@ class ConfigManager:
         seasons = self.get_all_seasons()
         return seasons.get(season_key, {})
     
-    def add_season(self, season_key: str, name: str, auto_create: bool = True) -> bool:
-        """新しいシーズンを追加（シーズン名でスプレッドシートを作成）"""
+    def extract_spreadsheet_id(self, url: str) -> str:
+        """スプレッドシートURLからIDを抽出"""
+        import re
+        pattern = r'/spreadsheets/d/([a-zA-Z0-9-_]+)'
+        match = re.search(pattern, url)
+        return match.group(1) if match else ""
+    
+    def load_vision_credentials(self) -> Optional[Union[Dict, str]]:
+        """Vision API認証情報を読み込み（APIキーまたはJSONファイル）"""
+        # APIキーが設定されている場合はそれを優先
+        api_key = self.get_vision_api_key()
+        if api_key:
+            return api_key
+        
+        # JSONファイルを試行
+        creds_file = self.get_vision_credentials_file()
+        if creds_file and os.path.exists(creds_file):
+            try:
+                with open(creds_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                st.error(f"Vision API認証ファイル読み込みエラー: {e}")
+        return None
+    
+    def load_sheets_credentials(self) -> Optional[Dict]:
+        """Sheets API認証情報を読み込み（Streamlit Secrets対応）"""
+        return self._get_sheets_credentials_dict(self.config)
+    
+    def get_auto_save_to_sheets(self) -> bool:
+        """Google Sheetsへの自動保存設定を取得"""
+        return self.config.get("app", {}).get("auto_save_to_sheets", True)
+    
+    def get_default_game_type(self) -> str:
+        """デフォルトの対局タイプを取得"""
+        return self.config.get("app", {}).get("default_game_type", "四麻半荘")
+    
+    def update_config(self, section: str, key: str, value) -> bool:
+        """設定を更新"""
         try:
-            # 既存のシーズンキーをチェック
-            existing_seasons = self.get_all_seasons()
-            if season_key in existing_seasons:
-                st.error(f"シーズンキー '{season_key}' は既に存在します")
-                return False
-            
-            # シーズン名をスプレッドシート名として使用
-            spreadsheet_name = name
-            result = self._create_new_spreadsheet(spreadsheet_name)
-            if result['success']:
-                spreadsheet_id = result['spreadsheet_id']
-                url = result['url']
-            else:
-                st.error(f"スプレッドシート作成に失敗: {result.get('error', '不明なエラー')}")
-                return False
-            
-            # シーズン情報を追加
-            if "google_sheets" not in self.config:
-                self.config["google_sheets"] = {}
-            if "seasons" not in self.config["google_sheets"]:
-                self.config["google_sheets"]["seasons"] = {}
-            
-            self.config["google_sheets"]["seasons"][season_key] = {
-                "name": name,
-                "spreadsheet_id": spreadsheet_id,
-                "url": url,
-                "created_at": self._get_current_timestamp()
-            }
-            
-            # 初回シーズンの場合は現在のシーズンに設定
-            current_season = self.get_current_season()
-            if not current_season:
-                self.config["google_sheets"]["current_season"] = season_key
-            
-            # 設定を保存
+            if section not in self.config:
+                self.config[section] = {}
+            self.config[section][key] = value
             return self.save_config()
         except Exception as e:
-            st.error(f"シーズン追加エラー: {e}")
+            st.error(f"設定更新エラー: {e}")
             return False
     
-    def ensure_default_season_exists(self) -> bool:
-        """デフォルトシーズンチェック（自動作成なし）"""
-        current_season = self.get_current_season()
-        seasons = self.get_all_seasons()
-        
-        if not current_season or current_season not in seasons:
-            return False
-        
-        return True
+    def _get_current_timestamp(self) -> str:
+        """現在のタイムスタンプを取得"""
+        from datetime import datetime
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     def _create_new_spreadsheet(self, title: str) -> Dict:
         """新しいスプレッドシートを自動作成（公開設定）"""
@@ -386,136 +564,6 @@ class ConfigManager:
                 'warning': f"ヘッダー初期化に失敗しましたが、スプレッドシートは作成されました: {e}"
             }
     
-    def set_current_season(self, season_key: str) -> bool:
-        """現在のシーズンを変更"""
-        try:
-            seasons = self.get_all_seasons()
-            if season_key not in seasons:
-                st.error(f"シーズン '{season_key}' が見つかりません")
-                return False
-            
-            self.config.setdefault("google_sheets", {})["current_season"] = season_key
-            return self.save_config()
-        except Exception as e:
-            st.error(f"シーズン変更エラー: {e}")
-            return False
-    
-    def delete_season(self, season_key: str) -> bool:
-        """シーズンを削除（現在のシーズンは削除不可）"""
-        try:
-            current_season = self.get_current_season()
-            if season_key == current_season:
-                st.error("現在のシーズンは削除できません")
-                return False
-            
-            seasons = self.get_all_seasons()
-            if season_key not in seasons:
-                st.error(f"シーズン '{season_key}' が見つかりません")
-                return False
-            
-            # シーズンを削除
-            del self.config["google_sheets"]["seasons"][season_key]
-            return self.save_config()
-            
-        except Exception as e:
-            st.error(f"シーズン削除エラー: {e}")
-            return False
-    
-    def extract_spreadsheet_id(self, url: str) -> str:
-        """スプレッドシートURLからIDを抽出"""
-        import re
-        pattern = r'/spreadsheets/d/([a-zA-Z0-9-_]+)'
-        match = re.search(pattern, url)
-        return match.group(1) if match else ""
-    
-    def load_vision_credentials(self) -> Optional[Union[Dict, str]]:
-        """Vision API認証情報を読み込み（APIキーまたはJSONファイル）"""
-        # APIキーが設定されている場合はそれを優先
-        api_key = self.get_vision_api_key()
-        if api_key:
-            return api_key
-        
-        # JSONファイルを試行
-        creds_file = self.get_vision_credentials_file()
-        if creds_file and os.path.exists(creds_file):
-            try:
-                with open(creds_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                st.error(f"Vision API認証ファイル読み込みエラー: {e}")
-        return None
-    
-    def load_sheets_credentials(self) -> Optional[Dict]:
-        """Sheets API認証情報を読み込み（Streamlit Secrets対応）"""
-        # まずStreamlit Secretsから読み込みを試行
-        if hasattr(st, 'secrets') and 'google_sheets' in st.secrets:
-            try:
-                sheets_secrets = st.secrets['google_sheets']
-                
-                # private_keyの改行を正しく処理
-                private_key = sheets_secrets.get('private_key', '').strip(' "')
-                if private_key and '\\n' in private_key:
-                    private_key = private_key.replace('\\n', '\n')
-                
-                credentials_dict = {
-                    "type": sheets_secrets.get('type', '').strip(' "'),
-                    "project_id": sheets_secrets.get('project_id', '').strip(' "'),
-                    "private_key": private_key,
-                    "client_email": sheets_secrets.get('client_email', '').strip(' "'),
-                    "client_id": "",
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-                }
-                
-                # 必要なフィールドがすべて存在するかチェック
-                required_fields = ['type', 'project_id', 'private_key', 'client_email']
-                if all(credentials_dict.get(field) for field in required_fields):
-                    return credentials_dict
-                
-            except Exception as e:
-                st.error(f"Secrets からGoogle Sheets認証情報読み込みエラー: {e}")
-        
-        # Secretsがない場合はJSONファイルから読み込み
-        creds_file = self.get_sheets_credentials_file()
-        if creds_file and os.path.exists(creds_file):
-            try:
-                with open(creds_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                st.error(f"Sheets API認証ファイル読み込みエラー: {e}")
-        else:
-            # ファイルが見つからない場合はVision APIの認証情報を試用
-            vision_creds = self.load_vision_credentials()
-            if isinstance(vision_creds, dict):
-                # Vision APIのJSONファイルがSheets APIにも使える場合がある
-                return vision_creds
-        return None
-    
-    def get_auto_save_to_sheets(self) -> bool:
-        """Google Sheetsへの自動保存設定を取得"""
-        return self.config.get("app", {}).get("auto_save_to_sheets", True)
-    
-    def get_default_game_type(self) -> str:
-        """デフォルトの対局タイプを取得"""
-        return self.config.get("app", {}).get("default_game_type", "四麻半荘")
-    
-    def update_config(self, section: str, key: str, value) -> bool:
-        """設定を更新"""
-        try:
-            if section not in self.config:
-                self.config[section] = {}
-            self.config[section][key] = value
-            return self.save_config()
-        except Exception as e:
-            st.error(f"設定更新エラー: {e}")
-            return False
-    
-    def _get_current_timestamp(self) -> str:
-        """現在のタイムスタンプを取得"""
-        from datetime import datetime
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
     def get_config_status(self) -> Dict:
         """設定状況を確認"""
         vision_creds = self.load_vision_credentials()
@@ -530,7 +578,8 @@ class ConfigManager:
             "spreadsheet_id": bool(self.get_spreadsheet_id()),
             "current_season": current_season,
             "season_count": len(seasons),
-            "seasons": seasons
+            "seasons": seasons,
+            "config_spreadsheet_synced": st.session_state.get('config_synced_with_spreadsheet', False)
         }
         return status
     

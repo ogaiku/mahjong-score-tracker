@@ -529,10 +529,6 @@ def save_game_record_with_names(players_data, game_date, game_time, game_type, n
                 # 成功メッセージを1回だけ表示
                 st.success("記録を保存しました")
                 
-                # 保存後のフィードバック
-                total_records = len(st.session_state['game_records'])
-                st.info(f"総記録数: {total_records}件")
-                
                 return True
             else:
                 st.error("記録の追加に失敗しました")

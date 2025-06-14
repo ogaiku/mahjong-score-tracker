@@ -308,27 +308,23 @@ def create_extraction_form():
         with col1:
             submitted = st.form_submit_button("記録を保存", type="primary", use_container_width=True)
         with col2:
-            if st.form_submit_button("クリア", use_container_width=True):
-                # フォームをクリア
-                st.session_state['analysis_result'] = None
-                st.session_state['screenshot_uploader_key'] += 1
-                st.rerun()
+            clear_clicked = st.form_submit_button("クリア", use_container_width=True)
+        
+        if clear_clicked:
+            # フォームをクリア
+            st.session_state['analysis_result'] = None
+            st.session_state['screenshot_uploader_key'] += 1
+            st.rerun()
         
         if submitted and is_valid:
             if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                st.success("記録を保存しました")
                 # 成功後にフォームをクリア
                 st.session_state['analysis_result'] = None
                 st.session_state['screenshot_uploader_key'] += 1
-                # rerunしない（ページ遷移を防ぐ）
+                st.rerun()
 
 def manual_input_tab():
     st.header("手動データ入力")
-    
-    # フォーム送信後のクリア処理
-    if st.session_state.get('manual_form_submitted', False):
-        st.session_state['manual_form_submitted'] = False
-        st.rerun()
     
     with st.form("manual_input_form", clear_on_submit=True):
         st.subheader("プレイヤー情報")
@@ -348,5 +344,4 @@ def manual_input_tab():
         
         if submitted and is_valid:
             if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                st.session_state['manual_form_submitted'] = True
                 st.rerun()

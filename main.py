@@ -92,11 +92,14 @@ st.markdown("""
 def main():
     st.title("麻雀点数管理システム")
     
+    # 設定スプレッドシートとの同期を最初に実行
+    initialize_config_with_spreadsheet_sync()
+    
     # サイドバー設定
     setup_sidebar()
     
-    # セッション状態の初期化とデータ読み込み（強化版）
-    initialize_session_and_load_data_enhanced()
+    # セッション状態の初期化とデータ読み込み
+    initialize_session_and_load_data()
     
     # メインコンテンツ - 3つのタブ
     tab1, tab2, tab3 = st.tabs(["ホーム", "スクショ解析", "手動入力"])
@@ -110,9 +113,21 @@ def main():
     with tab3:
         manual_input_tab()
 
-def initialize_session_and_load_data_enhanced():
-    """セッション状態の初期化とGoogle Sheetsからのデータ読み込み（強化版）"""
-    # セッション状態の初期化
+def initialize_config_with_spreadsheet_sync():
+    """設定スプレッドシートと同期して設定を初期化"""
+    if 'config_initialized' not in st.session_state:
+        from config_manager import ConfigManager
+        
+        try:
+            config_manager = ConfigManager()
+            status = config_manager.get_config_status()
+            st.session_state['config_initialized'] = True
+            
+        except Exception as e:
+            st.session_state['config_initialized'] = True
+
+def initialize_session_and_load_data():
+    """セッション状態の初期化とGoogle Sheetsからのデータ読み込み"""
     default_states = {
         'active_tab': 'ホーム',
         'show_data': False,
@@ -127,11 +142,10 @@ def initialize_session_and_load_data_enhanced():
         if key not in st.session_state:
             st.session_state[key] = default_value
     
-    # データの自動読み込み（毎回実行）
-    load_data_from_sheets_always()
+    load_data_from_sheets_with_config_sync()
 
-def load_data_from_sheets_always():
-    """Google Sheetsからデータを常に読み込み（リロード対策）"""
+def load_data_from_sheets_with_config_sync():
+    """設定スプレッドシート同期後にGoogle Sheetsからデータを読み込み"""
     from config_manager import ConfigManager
     from ui_components import load_season_data
     import time
@@ -140,29 +154,23 @@ def load_data_from_sheets_always():
         config_manager = ConfigManager()
         current_season = config_manager.get_current_season()
         
-        # シーズンが設定されている場合のみ同期
         if current_season:
-            # 前回の同期から一定時間経過している場合、または初回読み込みの場合
             current_time = time.time()
             last_sync = st.session_state.get('last_sync_time', 0)
             
-            # 5秒以上経過した場合、または初回の場合は同期
             if current_time - last_sync > 5:
                 try:
                     load_season_data(config_manager, current_season)
                     st.session_state['last_sync_time'] = current_time
                     st.session_state['data_loaded'] = True
                 except Exception as e:
-                    # 同期エラーでもローカルデータは保持
                     if 'game_records' not in st.session_state:
                         st.session_state['game_records'] = []
         else:
-            # シーズン未設定の場合は空データで初期化
             if 'game_records' not in st.session_state:
                 st.session_state['game_records'] = []
         
     except Exception as e:
-        # エラー時はローカルデータを初期化
         if 'game_records' not in st.session_state:
             st.session_state['game_records'] = []
 
