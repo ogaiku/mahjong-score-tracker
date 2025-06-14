@@ -1,4 +1,4 @@
-# input_forms.py - 完全版
+# input_forms.py - シンプル化版
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
@@ -37,7 +37,9 @@ def create_player_input_fields(prefix="default"):
                         label_visibility="collapsed"
                     )
                     player_names.append(selected_player)
-                else:
+                    # テキスト入力を無効化するため空のcontainerを作成
+                    st.empty()
+                else:  # 新規入力
                     new_name = st.text_input(
                         "名前",
                         key=f"{prefix}_new_player_{i}",
@@ -45,7 +47,10 @@ def create_player_input_fields(prefix="default"):
                         label_visibility="collapsed"
                     )
                     player_names.append(new_name)
+                    # セレクトボックスを無効化するため空のcontainerを作成
+                    st.empty()
             else:
+                # 既存プレイヤーがいない場合は直接入力のみ
                 new_name = st.text_input(
                     "名前",
                     key=f"{prefix}_new_player_{i}",
@@ -75,32 +80,43 @@ def create_player_input_fields_with_defaults(prefix="default", default_names=Non
             st.caption(f"プレイヤー{i+1}")
             default_name = default_names[i] if i < len(default_names) else ''
             
-            if existing_players and default_name in existing_players:
-                # 既存プレイヤーの場合は選択済みに
+            if existing_players:
+                # デフォルト名が既存プレイヤーにある場合は「既存選択」、そうでなければ「新規入力」
+                if default_name and default_name in existing_players:
+                    default_input_type = "既存選択"
+                    default_index = 1
+                else:
+                    default_input_type = "新規入力"
+                    default_index = 0
+                
                 input_type = st.radio(
                     "入力方法",
                     ["新規入力", "既存選択"],
-                    index=1,  # 既存選択をデフォルト
+                    index=default_index,
                     key=f"{prefix}_input_type_{i}",
                     horizontal=True,
                     label_visibility="collapsed"
                 )
                 
                 if input_type == "既存選択":
-                    try:
-                        default_index = existing_players.index(default_name) + 1  # +1 because of empty option
-                    except ValueError:
-                        default_index = 0
+                    # 既存選択の場合
+                    if default_name in existing_players:
+                        select_default_index = existing_players.index(default_name) + 1  # +1 because of empty option
+                    else:
+                        select_default_index = 0
                     
                     selected_player = st.selectbox(
                         "選択",
                         [""] + existing_players,
-                        index=default_index,
+                        index=select_default_index,
                         key=f"{prefix}_select_player_{i}",
                         label_visibility="collapsed"
                     )
                     player_names.append(selected_player)
-                else:
+                    # テキスト入力を無効化するため空のcontainerを作成
+                    st.empty()
+                else:  # 新規入力
+                    # 新規入力の場合
                     new_name = st.text_input(
                         "名前",
                         value=default_name,
@@ -109,44 +125,18 @@ def create_player_input_fields_with_defaults(prefix="default", default_names=Non
                         label_visibility="collapsed"
                     )
                     player_names.append(new_name)
+                    # セレクトボックスを無効化するため空のcontainerを作成
+                    st.empty()
             else:
-                # 新規プレイヤーまたは既存プレイヤーがいない場合
-                if existing_players:
-                    input_type = st.radio(
-                        "入力方法",
-                        ["新規入力", "既存選択"],
-                        index=0,  # 新規入力をデフォルト
-                        key=f"{prefix}_input_type_{i}",
-                        horizontal=True,
-                        label_visibility="collapsed"
-                    )
-                    
-                    if input_type == "既存選択":
-                        selected_player = st.selectbox(
-                            "選択",
-                            [""] + existing_players,
-                            key=f"{prefix}_select_player_{i}",
-                            label_visibility="collapsed"
-                        )
-                        player_names.append(selected_player)
-                    else:
-                        new_name = st.text_input(
-                            "名前",
-                            value=default_name,
-                            key=f"{prefix}_new_player_{i}",
-                            placeholder="ニックネーム",
-                            label_visibility="collapsed"
-                        )
-                        player_names.append(new_name)
-                else:
-                    new_name = st.text_input(
-                        "名前",
-                        value=default_name,
-                        key=f"{prefix}_new_player_{i}",
-                        placeholder="ニックネーム",
-                        label_visibility="collapsed"
-                    )
-                    player_names.append(new_name)
+                # 既存プレイヤーがいない場合は直接入力
+                new_name = st.text_input(
+                    "名前",
+                    value=default_name,
+                    key=f"{prefix}_new_player_{i}",
+                    placeholder="ニックネーム",
+                    label_visibility="collapsed"
+                )
+                player_names.append(new_name)
     
     return player_names
 
