@@ -35,7 +35,21 @@ def show_ranking_tab(player_manager: PlayerManager, analyzer: MahjongDataAnalyze
     ranking_df = player_manager.get_ranking_table()
     
     if not ranking_df.empty:
-        st.dataframe(ranking_df, use_container_width=True, hide_index=False)
+        # 合計スコア列を追加
+        ranking_df_with_total = ranking_df.copy()
+        
+        # 各プレイヤーの合計スコアを計算
+        all_players = player_manager.get_all_player_names()
+        total_scores = []
+        
+        for player_name in ranking_df_with_total['プレイヤー名']:
+            stats = player_manager.get_player_statistics(player_name)
+            total_scores.append(f"{stats['total_score']:+.1f}pt")
+        
+        # 合計スコア列を追加（平均スコアの後に挿入）
+        ranking_df_with_total.insert(3, '合計スコア', total_scores)
+        
+        st.dataframe(ranking_df_with_total, use_container_width=True, hide_index=False)
         
         # スコア計算説明
         with st.expander("スコア計算について"):
