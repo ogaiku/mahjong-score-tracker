@@ -58,21 +58,6 @@ def home_tab():
         with col4:
             st.metric("最多対局者", most_active_player, f"{max_games}回")
         
-        # 最近の対局記録
-        st.divider()
-        st.subheader("最近の対局記録")
-        
-        col_count, col_filter = st.columns([1, 3])
-        with col_count:
-            display_count = st.selectbox(
-                "表示件数",
-                options=[5, 10, 20, 50],
-                index=0
-            )
-        
-        recent_records = st.session_state['game_records'][-display_count:]
-        display_recent_records_enhanced(recent_records)
-        
         # トッププレイヤー
         if total_players > 0:
             st.divider()
@@ -84,13 +69,13 @@ def home_tab():
                 if stats['total_games'] >= 3:
                     player_stats.append({
                         'プレイヤー': player,
-                        '平均スコア': stats['avg_score'],  # 新しいスコア計算
+                        '合計スコア': stats['total_score'],  # 合計スコアに変更
                         '対局数': stats['total_games'],
                         '1位率': stats['win_rate']
                     })
             
             if player_stats:
-                player_stats.sort(key=lambda x: x['平均スコア'], reverse=True)
+                player_stats.sort(key=lambda x: x['合計スコア'], reverse=True)
                 top_players = player_stats[:5]
                 
                 top_cols = st.columns(min(len(top_players), 5))
@@ -99,7 +84,7 @@ def home_tab():
                         rank = i + 1
                         st.metric(
                             label=f"{rank}位: {player_data['プレイヤー']}",
-                            value=f"{player_data['平均スコア']:+.1f}pt",  # 新しいスコア表示
+                            value=f"{player_data['合計スコア']:+.1f}pt",  # 合計スコア表示
                             delta=f"1位率: {player_data['1位率']:.1f}%"
                         )
             else:

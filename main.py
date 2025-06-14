@@ -119,7 +119,20 @@ def initialize_config_with_spreadsheet_sync():
         from config_manager import ConfigManager
         
         try:
+            # 設定スプレッドシートからの同期を強制実行
             config_manager = ConfigManager()
+            
+            # 設定同期後、現在のシーズンのデータも読み込み
+            current_season = config_manager.get_current_season()
+            if current_season:
+                from ui_components import load_season_data
+                load_season_data(config_manager, current_season)
+                
+                # 同期時刻を設定
+                import time
+                st.session_state['last_sync_time'] = time.time()
+                st.session_state['data_loaded'] = True
+            
             status = config_manager.get_config_status()
             st.session_state['config_initialized'] = True
             
@@ -158,7 +171,8 @@ def load_data_from_sheets_with_config_sync():
             current_time = time.time()
             last_sync = st.session_state.get('last_sync_time', 0)
             
-            if current_time - last_sync > 5:
+            # 初回読み込み時は制限なし、2回目以降は5秒制限
+            if last_sync == 0 or current_time - last_sync > 5:
                 try:
                     load_season_data(config_manager, current_season)
                     st.session_state['last_sync_time'] = current_time
