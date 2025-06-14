@@ -81,7 +81,7 @@ def show_data_modal():
             st.rerun()
 
 def show_statistics_modal():
-    """統計表示モーダル（新スコア対応）"""
+    """統計表示モーダル（合計スコアランキング + 表で両方併記）"""
     st.subheader("統計分析")
     
     if 'game_records' in st.session_state and st.session_state['game_records']:
@@ -109,12 +109,12 @@ def show_statistics_modal():
         
         with col4:
             if all_players:
-                # 最高平均スコアのプレイヤー（新スコア）
-                best_avg = max(all_players, key=lambda p: player_manager.get_player_statistics(p)['avg_score'])
-                best_avg_score = player_manager.get_player_statistics(best_avg)['avg_score']
-                st.metric("最高平均スコア", f"{best_avg}", f"{best_avg_score:+.1f}pt")
+                # 最高合計スコアのプレイヤー（ランキング基準に合わせて変更）
+                best_total = max(all_players, key=lambda p: player_manager.get_player_statistics(p)['total_score'])
+                best_total_score = player_manager.get_player_statistics(best_total)['total_score']
+                st.metric("最高合計スコア", f"{best_total}", f"{best_total_score:+.1f}pt")
         
-        # プレイヤー別詳細統計
+        # プレイヤー別詳細統計（合計スコアランキング + 表で両方併記）
         st.subheader("プレイヤー別詳細統計")
         
         if all_players:
@@ -125,16 +125,31 @@ def show_statistics_modal():
                     player_stats.append({
                         'プレイヤー': player_name,
                         '対局数': f"{stats['total_games']}回",
-                        '平均スコア': f"{stats['avg_score']:+.2f}pt",  # 新スコア
-                        '平均点棒': f"{stats['avg_raw_score']:,.0f}点",  # 従来の点棒
+                        '合計スコア': f"{stats['total_score']:+.1f}pt",      # 合計スコア
+                        '平均スコア': f"{stats['avg_score']:+.2f}pt",        # 平均スコア（新規追加）
+                        '平均点棒': f"{stats['avg_raw_score']:,.0f}点",      # 従来の点棒
                         '平均順位': f"{stats['avg_rank']:.2f}位",
                         '1位率': f"{stats['win_rate']:.1f}%",
                         '最高点棒': f"{stats['max_score']:,.0f}点",
-                        '最低点棒': f"{stats['min_score']:,.0f}点"
+                        '最低点棒': f"{stats['min_score']:,.0f}点",
+                        # ソート用の数値データ
+                        '_total_score_num': stats['total_score']
                     })
             
             if player_stats:
-                stats_df = pd.DataFrame(player_stats)
+                # 合計スコアでソート（ランキング基準は合計スコア）
+                player_stats_sorted = sorted(player_stats, key=lambda x: x['_total_score_num'], reverse=True)
+                
+                # ソート用データを削除
+                for stat in player_stats_sorted:
+                    del stat['_total_score_num']
+                
+                # ランキング説明
+                st.markdown("**ランキング基準: 合計スコア**")
+                st.caption("継続参加 + 実力を総合的に評価。多く参加して好成績を残したプレイヤーが上位に表示されます。")
+                
+                # 統計表を表示（合計スコアと平均スコア両方を併記）
+                stats_df = pd.DataFrame(player_stats_sorted)
                 st.dataframe(stats_df, use_container_width=True, hide_index=True)
                 
                 # スコア計算説明
@@ -148,6 +163,11 @@ def show_statistics_modal():
                     - {SCORING_EXPLANATION['uma_3_player']}
                     - {SCORING_EXPLANATION['participation']}
                     - {SCORING_EXPLANATION['starting_points']}
+                    
+                    **表示項目の説明**:
+                    - **合計スコア**: 全ゲームのスコアを合計（ランキング基準）
+                    - **平均スコア**: 1ゲームあたりの平均スコア（実力指標）
+                    - **平均点棒**: 従来の点棒による平均
                     """)
             else:
                 st.info("統計データがありません")
