@@ -1,15 +1,16 @@
-# tab_pages.py (完全版・絵文字なし)
+# tab_pages.py - 簡素化版（プレイヤー登録分離）
 import streamlit as st
 import pandas as pd
 from PIL import Image
 from datetime import datetime, date
 from input_forms import (
-    create_player_input_fields, 
-    create_player_input_fields_with_defaults,
+    create_player_input_fields_simple,
+    create_player_input_fields_with_registration,
     create_score_input_fields,
     create_game_info_fields,
     show_input_confirmation,
-    save_game_record
+    save_game_record,
+    show_player_management
 )
 from ui_components import extract_data_from_image, display_extraction_results
 from data_modals import show_data_modal, show_statistics_modal
@@ -69,7 +70,7 @@ def home_tab():
                 if stats['total_games'] >= 3:
                     player_stats.append({
                         'プレイヤー': player,
-                        '合計スコア': stats['total_score'],  # 合計スコアに変更
+                        '合計スコア': stats['total_score'],
                         '対局数': stats['total_games'],
                         '1位率': stats['win_rate']
                     })
@@ -84,7 +85,7 @@ def home_tab():
                         rank = i + 1
                         st.metric(
                             label=f"{rank}位: {player_data['プレイヤー']}",
-                            value=f"{player_data['合計スコア']:+.1f}pt",  # 合計スコア表示
+                            value=f"{player_data['合計スコア']:+.1f}pt",
                             delta=f"1位率: {player_data['1位率']:.1f}%"
                         )
             else:
@@ -103,7 +104,6 @@ def home_tab():
                 - {SCORING_EXPLANATION['starting_points']}
                 """)
         
-        
         # データ操作メニュー
         st.divider()
         st.subheader("データ管理")
@@ -121,7 +121,7 @@ def home_tab():
                 st.rerun()
         
         with btn_col3:
-            # CSV出力ボタン（一意のキーを追加）
+            # CSV出力ボタン
             df = pd.DataFrame(st.session_state['game_records'])
             csv_data = df.to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
@@ -130,34 +130,20 @@ def home_tab():
                 file_name=f"mahjong_records_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 use_container_width=True,
-                key="home_csv_download"  # 一意のキーを追加
+                key="home_csv_download"
             )
     
     else:
-        st.info("記録がありません。対局データを追加してください。")
+        st.info("記録がありません。まずプレイヤーを登録して対局データを追加してください。")
         
         # クイックスタートガイド
-        st.subheader("クイックスタート")
+        st.subheader("始め方")
         
-        quick_col1, quick_col2 = st.columns(2)
-        
-        with quick_col1:
-            st.markdown("""
-            **スクリーンショット解析**
-            1. 「スクショ解析」タブを選択
-            2. 画像をアップロード
-            3. 解析結果を確認
-            4. 記録を保存
-            """)
-        
-        with quick_col2:
-            st.markdown("""
-            **手動入力**
-            1. 「手動入力」タブを選択
-            2. プレイヤー名と点数を入力
-            3. 対局情報を設定
-            4. 記録を保存
-            """)
+        st.markdown("""
+        1. プレイヤー管理タブでプレイヤーを登録
+        2. スクリーンショット解析または手動入力で対局記録を追加
+        3. 統計データの確認
+        """)
     
     # モーダル表示処理
     if st.session_state.get('show_data', False):
@@ -169,62 +155,28 @@ def home_tab():
             st.session_state['show_player_stats'] = False
             st.rerun()
 
-def display_recent_records_enhanced(records):
-    """最近の記録表示"""
-    if not records:
-        st.info("表示する記録がありません")
-        return
-    
-    display_data = []
-    for i, record in enumerate(reversed(records)):
-        players_info = []
-        player_scores = []
-        
-        for j in range(1, 5):
-            name_key = f'player{j}_name'
-            score_key = f'player{j}_score'
-            
-            if name_key in record and score_key in record:
-                name = record[name_key]
-                score = record[score_key]
-                
-                if name and str(name).strip():
-                    players_info.append({'name': name, 'score': score})
-                    player_scores.append(score)
-        
-        # 順位付け
-        if player_scores:
-            sorted_scores = sorted(player_scores, reverse=True)
-            player_ranks = []
-            
-            for player in players_info:
-                rank = sorted_scores.index(player['score']) + 1
-                player_ranks.append(f"{rank}位 {player['name']}: {player['score']:,}点")
-            
-            participants = " | ".join(player_ranks)
-        else:
-            participants = "参加者なし"
-        
-        display_data.append({
-            '対局': f"#{len(records) - i}",
-            '日付': record.get('date', ''),
-            '時刻': record.get('time', ''),
-            'タイプ': record.get('game_type', ''),
-            '結果': participants
-        })
-    
-    df = pd.DataFrame(display_data)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
 def screenshot_upload_tab():
     st.header("スクリーンショット解析")
+    
+    # プレイヤー登録状況をチェック
+    if 'game_records' in st.session_state and st.session_state['game_records']:
+        from player_manager import PlayerManager
+        player_manager = PlayerManager(st.session_state['game_records'])
+        existing_players = player_manager.get_all_player_names()
+    else:
+        existing_players = []
+    
+    if not existing_players:
+        st.warning("先にプレイヤーを登録してください")
+        st.info("「プレイヤー管理」タブでプレイヤーを登録してから、スクリーンショット解析をご利用ください。")
+        return
     
     # ファイルアップローダーキーの管理
     if 'screenshot_uploader_key' not in st.session_state:
         st.session_state['screenshot_uploader_key'] = 0
     
     uploaded_file = st.file_uploader(
-        "画像ファイルを選択",
+        "雀魂のスクリーンショットを選択",
         type=['png', 'jpg', 'jpeg'],
         key=f"screenshot_uploader_{st.session_state['screenshot_uploader_key']}"
     )
@@ -243,7 +195,6 @@ def screenshot_upload_tab():
                 st.rerun()
         
         with col2:
-            # 解析結果の表示部分を削除
             pass
     
     # 解析結果がある場合のみフォームを表示
@@ -254,14 +205,12 @@ def screenshot_upload_tab():
             create_extraction_form()
 
 def create_extraction_form():
-    # analysis_resultがNoneまたは存在しない場合は何も表示しない
     if ('analysis_result' not in st.session_state or 
         st.session_state['analysis_result'] is None):
         return
     
     result = st.session_state['analysis_result']
     
-    # resultがNoneの場合も早期リターン
     if result is None or not result.get('success', False):
         return
     
@@ -269,25 +218,24 @@ def create_extraction_form():
     while len(players) < 4:
         players.append({'nickname': '', 'score': 25000})
     
-    st.subheader("データ確認・修正")
+    st.subheader("解析結果の確認・修正")
     
     # 一意のフォームキーを使用
     form_key = f"extraction_form_{st.session_state.get('screenshot_uploader_key', 0)}"
     
     with st.form(form_key, clear_on_submit=False):
-        # 解析結果のニックネームをデフォルト値として設定
+        st.subheader("プレイヤー選択")
+        # 解析結果をデフォルト値として設定
         extracted_names = [player.get('nickname', '') for player in players]
-        player_names = create_player_input_fields_with_defaults("extraction", extracted_names)
+        player_names = create_player_input_fields_with_registration("extraction", extracted_names)
         
-        # 解析結果をデフォルト値として使用
+        st.subheader("点数確認")
         default_scores = [int(player.get('score', 25000)) for player in players]
         scores = create_score_input_fields(player_names, default_scores, "extraction")
         
+        st.subheader("対局情報")
         game_date, game_time, game_type = create_game_info_fields("extraction")
-        notes = st.text_area("メモ", placeholder="特記事項")
-        
-        st.subheader("入力内容確認")
-        is_valid = show_input_confirmation(player_names, scores)
+        notes = st.text_area("メモ", placeholder="特記事項があれば入力")
         
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -296,37 +244,58 @@ def create_extraction_form():
             clear_clicked = st.form_submit_button("クリア", use_container_width=True)
         
         if clear_clicked:
-            # フォームをクリア
             st.session_state['analysis_result'] = None
             st.session_state['screenshot_uploader_key'] += 1
             st.rerun()
         
-        if submitted and is_valid:
-            if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                # 成功後にフォームをクリア
-                st.session_state['analysis_result'] = None
-                st.session_state['screenshot_uploader_key'] += 1
-                st.rerun()
+        if submitted:
+            valid_players = [name for name in player_names if name.strip()]
+            if len(valid_players) >= 1:
+                if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
+                    st.session_state['analysis_result'] = None
+                    st.session_state['screenshot_uploader_key'] += 1
+                    st.rerun()
+            else:
+                st.error("少なくとも1名のプレイヤーを選択してください")
 
 def manual_input_tab():
     st.header("手動データ入力")
     
+    # プレイヤー登録状況をチェック
+    if 'game_records' in st.session_state and st.session_state['game_records']:
+        from player_manager import PlayerManager
+        player_manager = PlayerManager(st.session_state['game_records'])
+        existing_players = player_manager.get_all_player_names()
+    else:
+        existing_players = []
+    
+    if not existing_players:
+        st.warning("先にプレイヤーを登録してください")
+        st.info("「プレイヤー管理」タブでプレイヤーを登録してから、手動入力をご利用ください。")
+        return
+    
     with st.form("manual_input_form", clear_on_submit=True):
-        st.subheader("プレイヤー情報")
-        player_names = create_player_input_fields("manual")
+        st.subheader("プレイヤー選択")
+        player_names = create_player_input_fields_simple("manual")
         
         st.subheader("点数入力")
         scores = create_score_input_fields(player_names, prefix="manual")
         
         st.subheader("対局情報")
         game_date, game_time, game_type = create_game_info_fields("manual")
-        notes = st.text_area("メモ", placeholder="特記事項")
-        
-        st.subheader("入力内容確認")
-        is_valid = show_input_confirmation(player_names, scores)
+        notes = st.text_area("メモ", placeholder="特記事項があれば入力")
         
         submitted = st.form_submit_button("記録を保存", type="primary", use_container_width=True)
         
-        if submitted and is_valid:
-            if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
-                st.rerun()
+        if submitted:
+            valid_players = [name for name in player_names if name.strip()]
+            if len(valid_players) >= 1:
+                if save_game_record(player_names, scores, game_date, game_time, game_type, notes):
+                    st.rerun()
+            else:
+                st.error("少なくとも1名のプレイヤーを選択してください")
+
+def player_management_tab():
+    """プレイヤー管理タブ"""
+    st.header("プレイヤー管理")
+    show_player_management()

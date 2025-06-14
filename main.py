@@ -1,7 +1,7 @@
-# main.py
+# main.py - プレイヤー管理タブ追加版
 import streamlit as st
 from ui_components import setup_sidebar
-from tab_pages import home_tab, screenshot_upload_tab, manual_input_tab
+from tab_pages import home_tab, screenshot_upload_tab, manual_input_tab, player_management_tab
 
 # ページ設定
 st.set_page_config(
@@ -101,8 +101,8 @@ def main():
     # セッション状態の初期化とデータ読み込み
     initialize_session_and_load_data()
     
-    # メインコンテンツ - 3つのタブ
-    tab1, tab2, tab3 = st.tabs(["ホーム", "スクショ解析", "手動入力"])
+    # メインコンテンツ - 4つのタブ
+    tab1, tab2, tab3, tab4 = st.tabs(["ホーム", "スクショ解析", "手動入力", "プレイヤー管理"])
     
     with tab1:
         home_tab()
@@ -112,6 +112,9 @@ def main():
     
     with tab3:
         manual_input_tab()
+    
+    with tab4:
+        player_management_tab()
 
 def initialize_config_with_spreadsheet_sync():
     """設定スプレッドシートと同期して設定を初期化"""
