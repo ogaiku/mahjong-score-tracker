@@ -82,12 +82,14 @@ def home_tab():
                 top_cols = st.columns(min(len(top_players), 5))
                 for i, (col, player_data) in enumerate(zip(top_cols, top_players)):
                     with col:
-                        rank = i + 1
-                        st.metric(
-                            label=f"{rank}位: {player_data['プレイヤー']}",
-                            value=f"{player_data['合計スコア']:+.1f}pt",
-                            delta=f"1位率: {player_data['1位率']:.1f}%"
-                        )
+                         rank = i + 1
+                         # プレイヤー名を大きく表示
+                         st.markdown(f"### {rank}位")
+                         st.markdown(f"**{player_data['プレイヤー']}**")
+    
+                         # スコアと1位率を小さく表示
+                         st.caption(f"スコア: {player_data['合計スコア']:+.1f}pt")
+                         st.caption(f"1位率: {player_data['1位率']:.1f}%")
             else:
                 st.info("対局したプレイヤーがいません")
             
