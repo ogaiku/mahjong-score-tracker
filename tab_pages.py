@@ -67,7 +67,7 @@ def home_tab():
             player_stats = []
             for player in all_players:
                 stats = player_manager.get_player_statistics(player)
-                if stats['total_games'] >= 3:
+                if stats['total_games'] >= 1:
                     player_stats.append({
                         'プレイヤー': player,
                         '合計スコア': stats['total_score'],
@@ -89,7 +89,7 @@ def home_tab():
                             delta=f"1位率: {player_data['1位率']:.1f}%"
                         )
             else:
-                st.info("3回以上対局したプレイヤーがいません")
+                st.info("対局したプレイヤーがいません")
             
             # スコア計算の説明を追加
             with st.expander("スコア計算について"):
