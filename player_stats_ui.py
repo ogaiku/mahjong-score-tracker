@@ -46,7 +46,7 @@ def show_ranking_tab(player_manager: PlayerManager, analyzer: MahjongDataAnalyze
             player_stats.append({
                 'プレイヤー名': player_name,
                 '合計スコア': stats['total_score'],
-                '対局数': stats['total_games']
+                '対戦数': stats['total_games']
             })
     
     if not player_stats:
@@ -56,7 +56,7 @@ def show_ranking_tab(player_manager: PlayerManager, analyzer: MahjongDataAnalyze
     # 合計スコア順にソート
     player_stats.sort(key=lambda x: x['合計スコア'], reverse=True)
     
-    # 全対局を時系列順に取得
+    # 全対戦を時系列順に取得
     all_games = st.session_state['game_records']
     all_games_sorted = sorted(all_games, key=lambda x: (x['date'], x['time']))
     
@@ -68,21 +68,21 @@ def show_ranking_tab(player_manager: PlayerManager, analyzer: MahjongDataAnalyze
             '順位': rank,
             'プレイヤー名': player_data['プレイヤー名'],
             '合計スコア': f"{player_data['合計スコア']:+.1f}pt",
-            '対局数': f"{player_data['対局数']}回"
+            '対戦数': f"{player_data['対戦数']}回"
         }
         
-        # 各対局（第1局、第2局...）でのこのプレイヤーのスコアを追加
+        # 各対戦（第1戦、第2戦...）でのこのプレイヤーのスコアを追加
         for game_idx, game in enumerate(all_games_sorted):
-            game_col = f"第{game_idx+1}局"
+            game_col = f"第{game_idx+1}戦"
             
-            # このプレイヤーがこの対局に参加していたかチェック
+            # このプレイヤーがこの対戦に参加していたかチェック
             player_score = None
             for i in range(1, 5):
                 name_key = f'player{i}_name'
                 score_key = f'player{i}_score'
                 
                 if game.get(name_key) == player_data['プレイヤー名']:
-                    # 新スコア計算のため、対局記録を作成
+                    # 新スコア計算のため、対戦記録を作成
                     other_players = []
                     for j in range(1, 5):
                         if j != i:
@@ -146,7 +146,7 @@ def show_individual_stats_tab(player_manager: PlayerManager, analyzer: MahjongDa
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("総対局数", f"{stats['total_games']}回")
+                st.metric("総対戦数", f"{stats['total_games']}回")
             with col2:
                 st.metric("平均スコア", f"{stats['avg_score']:+.2f}pt")  # 新スコア
             with col3:
@@ -165,8 +165,8 @@ def show_individual_stats_tab(player_manager: PlayerManager, analyzer: MahjongDa
             if trend_chart.data:
                 st.plotly_chart(trend_chart, use_container_width=True)
             
-            # 最近の対局記録（詳細版）
-            st.subheader("最近の対局記録")
+            # 最近の対戦記録（詳細版）
+            st.subheader("最近の対戦記録")
             recent_records = stats['records'][-10:]
             if recent_records:
                 record_data = []
@@ -184,7 +184,7 @@ def show_individual_stats_tab(player_manager: PlayerManager, analyzer: MahjongDa
                 records_df = pd.DataFrame(record_data)
                 st.dataframe(records_df, hide_index=True, use_container_width=True)
         else:
-            st.info(f"{selected_player} の対局記録がありません")
+            st.info(f"{selected_player} の対戦記録がありません")
 
 def show_head_to_head_tab(player_manager: PlayerManager, all_players: list):
     if len(all_players) < 2:
