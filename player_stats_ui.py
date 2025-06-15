@@ -71,9 +71,9 @@ def show_ranking_tab(player_manager: PlayerManager, analyzer: MahjongDataAnalyze
             '対局数': f"{player_data['対局数']}回"
         }
         
-        # 各対局（第1戦、第2戦...）でのこのプレイヤーのスコアを追加
+        # 各対局（第1局、第2局...）でのこのプレイヤーのスコアを追加
         for game_idx, game in enumerate(all_games_sorted):
-            game_col = f"第{game_idx+1}戦"
+            game_col = f"第{game_idx+1}局"
             
             # このプレイヤーがこの対局に参加していたかチェック
             player_score = None
