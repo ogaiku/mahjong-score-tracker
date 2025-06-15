@@ -32,47 +32,109 @@ def show_player_statistics_modal():
         show_head_to_head_tab(player_manager, all_players)
 
 def show_ranking_tab(player_manager: PlayerManager, analyzer: MahjongDataAnalyzer):
-    ranking_df = player_manager.get_ranking_table()
+    # プレイヤー統計を取得して合計スコア順にソート
+    all_players = player_manager.get_all_player_names()
     
-    if not ranking_df.empty:
-        # 合計スコア列を追加
-        ranking_df_with_total = ranking_df.copy()
-        
-        # 各プレイヤーの合計スコアを計算
-        all_players = player_manager.get_all_player_names()
-        total_scores = []
-        
-        for player_name in ranking_df_with_total['プレイヤー名']:
-            stats = player_manager.get_player_statistics(player_name)
-            total_scores.append(f"{stats['total_score']:+.1f}pt")
-        
-        # 合計スコア列を追加（平均スコアの後に挿入）
-        ranking_df_with_total.insert(3, '合計スコア', total_scores)
-        
-        st.dataframe(ranking_df_with_total, use_container_width=True, hide_index=False)
-        
-        # スコア計算説明
-        with st.expander("スコア計算について"):
-            from scoring_config import SCORING_EXPLANATION
-            st.markdown(f"""
-            **計算式**: {SCORING_EXPLANATION['formula']}
-            
-            **詳細**:
-            - {SCORING_EXPLANATION['uma_4_player']}
-            - {SCORING_EXPLANATION['uma_3_player']}
-            - {SCORING_EXPLANATION['participation']}
-            - {SCORING_EXPLANATION['starting_points']}
-            """)
-        
-        ranking_chart = analyzer.create_player_ranking_chart()
-        if ranking_chart.data:
-            st.plotly_chart(ranking_chart, use_container_width=True)
-        
-        rank_dist_chart = analyzer.create_rank_distribution_chart()
-        if rank_dist_chart.data:
-            st.plotly_chart(rank_dist_chart, use_container_width=True)
-    else:
+    if not all_players:
         st.info("ランキングデータがありません")
+        return
+    
+    player_stats = []
+    for player_name in all_players:
+        stats = player_manager.get_player_statistics(player_name)
+        if stats['total_games'] > 0:
+            player_stats.append({
+                'プレイヤー名': player_name,
+                '合計スコア': stats['total_score'],
+                '対局数': stats['total_games']
+            })
+    
+    if not player_stats:
+        st.info("ランキングデータがありません")
+        return
+    
+    # 合計スコア順にソート
+    player_stats.sort(key=lambda x: x['合計スコア'], reverse=True)
+    
+    # 全対局を時系列順に取得
+    all_games = st.session_state['game_records']
+    all_games_sorted = sorted(all_games, key=lambda x: (x['date'], x['time']))
+    
+    # ランキング表のデータを作成
+    ranking_data = []
+    
+    for rank, player_data in enumerate(player_stats, 1):
+        row = {
+            '順位': rank,
+            'プレイヤー名': player_data['プレイヤー名'],
+            '合計スコア': f"{player_data['合計スコア']:+.1f}pt",
+            '対局数': f"{player_data['対局数']}回"
+        }
+        
+        # 各対局（第1戦、第2戦...）でのこのプレイヤーのスコアを追加
+        for game_idx, game in enumerate(all_games_sorted):
+            game_col = f"第{game_idx+1}戦"
+            
+            # このプレイヤーがこの対局に参加していたかチェック
+            player_score = None
+            for i in range(1, 5):
+                name_key = f'player{i}_name'
+                score_key = f'player{i}_score'
+                
+                if game.get(name_key) == player_data['プレイヤー名']:
+                    # 新スコア計算のため、対局記録を作成
+                    other_players = []
+                    for j in range(1, 5):
+                        if j != i:
+                            other_name = game.get(f'player{j}_name', '')
+                            other_score = game.get(f'player{j}_score', 0)
+                            if other_name:
+                                other_players.append({
+                                    'name': other_name,
+                                    'score': other_score
+                                })
+                    
+                    record = {
+                        'score': game.get(score_key, 0),
+                        'other_players': other_players,
+                        'game_type': game.get('game_type', '四麻半荘')
+                    }
+                    
+                    game_score = player_manager.calculate_player_game_score(record, player_data['プレイヤー名'])
+                    player_score = f"{game_score:+.1f}pt"
+                    break
+            
+            if player_score is not None:
+                row[game_col] = player_score
+            else:
+                row[game_col] = ""  # このプレイヤーは参加していない
+        
+        ranking_data.append(row)
+    
+    # DataFrameを作成して表示
+    ranking_df = pd.DataFrame(ranking_data)
+    st.dataframe(ranking_df, use_container_width=True, hide_index=True)
+    
+    # スコア計算説明
+    with st.expander("スコア計算について"):
+        from scoring_config import SCORING_EXPLANATION
+        st.markdown(f"""
+        **計算式**: {SCORING_EXPLANATION['formula']}
+        
+        **詳細**:
+        - {SCORING_EXPLANATION['uma_4_player']}
+        - {SCORING_EXPLANATION['uma_3_player']}
+        - {SCORING_EXPLANATION['participation']}
+        - {SCORING_EXPLANATION['starting_points']}
+        """)
+    
+    ranking_chart = analyzer.create_player_ranking_chart()
+    if ranking_chart.data:
+        st.plotly_chart(ranking_chart, use_container_width=True)
+    
+    rank_dist_chart = analyzer.create_rank_distribution_chart()
+    if rank_dist_chart.data:
+        st.plotly_chart(rank_dist_chart, use_container_width=True)
 
 def show_individual_stats_tab(player_manager: PlayerManager, analyzer: MahjongDataAnalyzer, all_players: list):
     selected_player = st.selectbox("プレイヤーを選択", all_players)
