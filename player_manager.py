@@ -153,7 +153,7 @@ class PlayerManager:
             if stats['total_games'] > 0:
                 ranking_data.append({
                     'プレイヤー名': player_name,
-                    '対局数': stats['total_games'],
+                    '対戦数': stats['total_games'],
                     '平均スコア': round(stats['avg_score'], 2),  # 新しいスコア
                     '平均点棒': round(stats['avg_raw_score'], 1),  # 従来の点棒
                     '平均順位': round(stats['avg_rank'], 2),

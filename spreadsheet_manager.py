@@ -54,7 +54,7 @@ class SpreadsheetManager:
             if not existing_headers:
                 # ヘッダー行を設定
                 headers = [
-                    "対局日", "対局時刻", "対局タイプ",
+                    "対戦日", "対戦時刻", "対戦タイプ",
                     "プレイヤー1名", "プレイヤー1点数",
                     "プレイヤー2名", "プレイヤー2点数", 
                     "プレイヤー3名", "プレイヤー3点数",
@@ -70,7 +70,7 @@ class SpreadsheetManager:
             return False
     
     def add_record(self, game_data: Dict) -> bool:
-        """対局記録を追加"""
+        """対戦記録を追加"""
         try:
             if not self.sheet:
                 return False
@@ -265,7 +265,7 @@ class SpreadsheetManager:
             headers = self.sheet.row_values(1)
             
             expected_headers = [
-                "対局日", "対局時刻", "対局タイプ",
+                "対戦日", "対戦時刻", "対戦タイプ",
                 "プレイヤー1名", "プレイヤー1点数",
                 "プレイヤー2名", "プレイヤー2点数", 
                 "プレイヤー3名", "プレイヤー3点数",

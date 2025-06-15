@@ -387,7 +387,7 @@ class ConfigManager:
         return self.config.get("app", {}).get("auto_save_to_sheets", True)
     
     def get_default_game_type(self) -> str:
-        """デフォルトの対局タイプを取得"""
+        """デフォルトの対戦タイプを取得"""
         return self.config.get("app", {}).get("default_game_type", "四麻半荘")
     
     def update_config(self, section: str, key: str, value) -> bool:
@@ -489,7 +489,7 @@ class ConfigManager:
         """スプレッドシートにヘッダー行を追加"""
         try:
             headers = [
-                "対局日", "対局時刻", "対局タイプ",
+                "対戦日", "対戦時刻", "対戦タイプ",
                 "プレイヤー1名", "プレイヤー1点数",
                 "プレイヤー2名", "プレイヤー2点数", 
                 "プレイヤー3名", "プレイヤー3点数",

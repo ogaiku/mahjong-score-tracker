@@ -5,7 +5,7 @@ from player_manager import PlayerManager
 
 def show_data_modal():
     """データ表示モーダル"""
-    st.subheader("保存済み対局記録")
+    st.subheader("保存済み対戦記録")
     
     if 'game_records' in st.session_state and st.session_state['game_records']:
         df = pd.DataFrame(st.session_state['game_records'])
@@ -15,7 +15,7 @@ def show_data_modal():
         
         # 列名を日本語に変更
         column_mapping = {
-            'date': '対局日',
+            'date': '対戦日',
             'time': '時刻',
             'game_type': 'タイプ',
             'player1_name': 'P1名前',
@@ -95,17 +95,17 @@ def show_statistics_modal():
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("総対局数", f"{total_games}回")
+            st.metric("総対戦数", f"{total_games}回")
         
         with col2:
             st.metric("参加プレイヤー数", f"{len(all_players)}人")
         
         with col3:
             if all_players:
-                # 最も対局数の多いプレイヤー
+                # 最も対戦数の多いプレイヤー
                 most_active = max(all_players, key=lambda p: player_manager.get_player_statistics(p)['total_games'])
                 most_active_games = player_manager.get_player_statistics(most_active)['total_games']
-                st.metric("最多対局者", f"{most_active}", f"{most_active_games}回")
+                st.metric("最多対戦者", f"{most_active}", f"{most_active_games}回")
         
         with col4:
             if all_players:
@@ -124,7 +124,7 @@ def show_statistics_modal():
                 if stats['total_games'] > 0:
                     player_stats.append({
                         'プレイヤー': player_name,
-                        '対局数': f"{stats['total_games']}回",
+                        '対戦数': f"{stats['total_games']}回",
                         '合計スコア': f"{stats['total_score']:+.1f}pt",      # 合計スコア
                         '平均スコア': f"{stats['avg_score']:+.2f}pt",        # 平均スコア（新規追加）
                         '平均点棒': f"{stats['avg_raw_score']:,.0f}点",      # 従来の点棒

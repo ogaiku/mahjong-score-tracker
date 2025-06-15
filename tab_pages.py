@@ -30,7 +30,7 @@ def home_tab():
         total_games = len(st.session_state['game_records'])
         total_players = len(all_players)
         
-        # 最新の対局情報
+        # 最新の対戦情報
         latest_game = st.session_state['game_records'][-1]
         latest_date = latest_game.get('date', '')
         
@@ -48,16 +48,16 @@ def home_tab():
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("総対局数", f"{total_games}回")
+            st.metric("総対戦数", f"{total_games}回")
         
         with col2:
             st.metric("参加プレイヤー数", f"{total_players}人")
         
         with col3:
-            st.metric("最新対局日", latest_date)
+            st.metric("最新対戦日", latest_date)
         
         with col4:
-            st.metric("最多対局者", most_active_player, f"{max_games}回")
+            st.metric("最多対戦者", most_active_player, f"{max_games}回")
         
         # トッププレイヤー
         if total_players > 0:
@@ -71,7 +71,7 @@ def home_tab():
                     player_stats.append({
                         'プレイヤー': player,
                         '合計スコア': stats['total_score'],
-                        '対局数': stats['total_games'],
+                        '対戦数': stats['total_games'],
                         '1位率': stats['win_rate']
                     })
             
@@ -91,7 +91,7 @@ def home_tab():
                          st.caption(f"スコア: {player_data['合計スコア']:+.1f}pt")
                          st.caption(f"1位率: {player_data['1位率']:.1f}%")
             else:
-                st.info("対局したプレイヤーがいません")
+                st.info("対戦したプレイヤーがいません")
             
             # スコア計算の説明を追加
             with st.expander("スコア計算について"):
@@ -136,13 +136,13 @@ def home_tab():
             )
     
     else:
-        st.info("記録がありません。スクリーンショット解析または手動入力で対局データを追加してください。")
+        st.info("記録がありません。スクリーンショット解析または手動入力で対戦データを追加してください。")
         
         # クイックスタートガイド
         st.subheader("始め方")
         
         st.markdown("""
-        1. **スクリーンショット解析**または**手動入力**で対局記録を追加
+        1. **スクリーンショット解析**または**手動入力**で対戦記録を追加
         2. プレイヤー名は初回入力時に自動登録されます
         3. 統計データの確認
         """)
@@ -222,7 +222,7 @@ def create_extraction_form():
         default_scores = [int(player.get('score', 25000)) for player in players]
         scores = create_score_input_fields(player_names, default_scores, "extraction")
         
-        st.subheader("対局情報")
+        st.subheader("対戦情報")
         game_date, game_time, game_type = create_game_info_fields("extraction")
         notes = st.text_area("メモ", placeholder="特記事項があれば入力")
         
@@ -275,7 +275,7 @@ def manual_input_tab():
         st.subheader("点数入力")
         scores = create_score_input_fields(player_names, prefix="manual")
         
-        st.subheader("対局情報")
+        st.subheader("対戦情報")
         game_date, game_time, game_type = create_game_info_fields("manual")
         notes = st.text_area("メモ", placeholder="特記事項があれば入力")
         

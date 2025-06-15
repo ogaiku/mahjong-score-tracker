@@ -184,7 +184,7 @@ def get_registered_players():
     # 設定スプレッドシートからプレイヤーリストを取得
     master_players = load_players_from_config_sheet()
     
-    # 対局記録から抽出したプレイヤー
+    # 対戦記録から抽出したプレイヤー
     game_players = []
     if 'game_records' in st.session_state and st.session_state['game_records']:
         player_manager = PlayerManager(st.session_state['game_records'])
@@ -229,7 +229,7 @@ def show_player_management():
     # 設定スプレッドシートからプレイヤーを読み込み
     master_players = load_players_from_config_sheet()
     
-    # 対局記録からもプレイヤーを取得
+    # 対戦記録からもプレイヤーを取得
     if 'game_records' in st.session_state and st.session_state['game_records']:
         player_manager = PlayerManager(st.session_state['game_records'])
         game_players = player_manager.get_all_player_names()
@@ -266,12 +266,12 @@ def show_player_management():
                     stats = player_manager.get_player_statistics(player_name)
                     player_stats.append({
                         "プレイヤー名": player_name,
-                        "対局数": stats['total_games']
+                        "対戦数": stats['total_games']
                     })
                 else:
                     player_stats.append({
                         "プレイヤー名": player_name,
-                        "対局数": 0
+                        "対戦数": 0
                     })
             
             df = pd.DataFrame(player_stats)
@@ -279,7 +279,7 @@ def show_player_management():
             
             # プレイヤー削除機能
             with st.expander("プレイヤー削除"):
-                st.warning("プレイヤーを削除すると、マスタリストと対局記録から完全に除外されます")
+                st.warning("プレイヤーを削除すると、マスタリストと対戦記録から完全に除外されます")
                 
                 if st.button("削除モードを有効にする", key="enable_delete_mode"):
                     st.session_state['delete_mode_enabled'] = True
@@ -306,7 +306,7 @@ def show_player_management():
             st.info("登録されているプレイヤーはいません")
 
 def delete_player_completely(player_name):
-    """プレイヤーを完全に削除（マスタリスト＋対局記録＋Google Sheets）"""
+    """プレイヤーを完全に削除（マスタリスト＋対戦記録＋Google Sheets）"""
     try:
         modified_count = 0
         
@@ -319,7 +319,7 @@ def delete_player_completely(player_name):
                 if player_name in st.session_state['master_players']:
                     st.session_state['master_players'].remove(player_name)
             
-            # 3. 対局記録から該当プレイヤーを除外
+            # 3. 対戦記録から該当プレイヤーを除外
             if 'game_records' in st.session_state and st.session_state['game_records']:
                 for record in st.session_state['game_records']:
                     record_modified = False
@@ -344,7 +344,7 @@ def delete_player_completely(player_name):
         if master_deleted:
             success_parts.append("マスタリスト")
         if modified_count > 0:
-            success_parts.append(f"対局記録({modified_count}件)")
+            success_parts.append(f"対戦記録({modified_count}件)")
         if sheets_update_success:
             success_parts.append("Google Sheets")
         
@@ -440,7 +440,7 @@ def create_score_input_fields(player_names, default_scores=None, prefix="default
     return scores
 
 def create_game_info_fields(prefix="default"):
-    """対局情報入力フィールド（日本時間対応）"""
+    """対戦情報入力フィールド（日本時間対応）"""
     from config_manager import ConfigManager
     
     # 日本時間を取得
@@ -450,10 +450,10 @@ def create_game_info_fields(prefix="default"):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        game_date = st.date_input("対局日", value=now_jst.date(), key=f"{prefix}_date")
+        game_date = st.date_input("対戦日", value=now_jst.date(), key=f"{prefix}_date")
     
     with col2:
-        game_time = st.time_input("対局時刻", value=now_jst.time(), key=f"{prefix}_time")
+        game_time = st.time_input("対戦時刻", value=now_jst.time(), key=f"{prefix}_time")
     
     with col3:
         # デフォルト値を設定から取得
@@ -462,7 +462,7 @@ def create_game_info_fields(prefix="default"):
         game_types = ["四麻東風", "四麻半荘", "三麻東風", "三麻半荘"]
         default_index = game_types.index(default_game_type) if default_game_type in game_types else 1
         
-        game_type = st.selectbox("対局タイプ", game_types, index=default_index, key=f"{prefix}_game_type")
+        game_type = st.selectbox("対戦タイプ", game_types, index=default_index, key=f"{prefix}_game_type")
     
     return game_date, game_time, game_type
 
@@ -487,7 +487,7 @@ def show_input_confirmation(player_names, scores):
         return False
 
 def save_game_record(player_names, scores, game_date, game_time, game_type, notes=""):
-    """対局記録保存（自動同期対応版）"""
+    """対戦記録保存（自動同期対応版）"""
     from ui_components import save_game_record_with_names
     
     players_data = []

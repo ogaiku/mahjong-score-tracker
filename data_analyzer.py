@@ -41,7 +41,7 @@ class MahjongDataAnalyzer:
             text=[f'{score:+.1f}' for score in avg_scores],
             textposition='auto',
             marker_color='#3b82f6',
-            hovertemplate='%{x}<br>平均スコア: %{y:+.2f}pt<br>対局数: %{customdata}回<extra></extra>',
+            hovertemplate='%{x}<br>平均スコア: %{y:+.2f}pt<br>対戦数: %{customdata}回<extra></extra>',
             customdata=list(game_counts)
         ))
         
@@ -139,7 +139,7 @@ class MahjongDataAnalyzer:
         
         fig.update_layout(
             title=f"{player_name} のスコア推移",
-            xaxis_title="対局回数",
+            xaxis_title="対戦回数",
             yaxis=dict(
                 title="ゲームスコア (pt)",
                 side="left"

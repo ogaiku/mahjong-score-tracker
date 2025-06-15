@@ -394,9 +394,9 @@ def convert_sheets_records(sheets_records: list) -> list:
     converted = []
     for record in sheets_records:
         converted_record = {
-            'date': record.get('対局日', ''),
-            'time': record.get('対局時刻', ''),
-            'game_type': record.get('対局タイプ', ''),
+            'date': record.get('対戦日', ''),
+            'time': record.get('対戦時刻', ''),
+            'game_type': record.get('対戦タイプ', ''),
             'player1_name': record.get('プレイヤー1名', ''),
             'player1_score': record.get('プレイヤー1点数', 0),
             'player2_name': record.get('プレイヤー2名', ''),
@@ -475,7 +475,7 @@ def display_extraction_results():
     st.success("解析完了")
 
 def save_game_record_with_names(players_data, game_date, game_time, game_type, notes):
-    """対局記録をGoogle Sheetsに保存（自動同期対応版）"""
+    """対戦記録をGoogle Sheetsに保存（自動同期対応版）"""
     valid_players = [p for p in players_data if p['name'].strip()]
     if len(valid_players) < 1:
         st.error("少なくとも1名のプレイヤー名を入力してください")

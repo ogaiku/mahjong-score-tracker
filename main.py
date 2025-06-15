@@ -267,7 +267,7 @@ def refresh_all_data():
         # プレイヤーマスタを強制リロード
         force_reload_players()
         
-        # 対局データを再読み込み
+        # 対戦データを再読み込み
         from config_manager import ConfigManager
         from ui_components import load_season_data
         
@@ -298,7 +298,7 @@ def get_app_status():
         # プレイヤーマスタの状態
         master_players_count = len(st.session_state.get('master_players', []))
         
-        # 対局記録の状態
+        # 対戦記録の状態
         game_records_count = len(st.session_state.get('game_records', []))
         
         return {
@@ -340,7 +340,7 @@ def handle_app_error(error_message, error_type="general"):
         "config": "設定の読み込みに失敗しました",
         "sheets": "Google Sheetsとの接続に失敗しました", 
         "players": "プレイヤーデータの読み込みに失敗しました",
-        "data": "対局データの読み込みに失敗しました",
+        "data": "対戦データの読み込みに失敗しました",
         "general": "予期しないエラーが発生しました"
     }
     
