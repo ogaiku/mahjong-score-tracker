@@ -1,4 +1,4 @@
-# ui_components.py - 完全版（自動同期対応）
+# ui_components.py - URL指定方式対応版
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -120,18 +120,34 @@ def display_config_status(config_manager: ConfigManager):
     with st.sidebar.expander("シーズン管理", expanded=False):
         if not has_sheets_auth:
             st.warning("Google Sheets認証が必要")
+            st.markdown("""
+            **設定手順**:
+            1. Google Cloudでサービスアカウントを作成
+            2. Google Sheets APIを有効化
+            3. 認証情報をStreamlit Secretsに設定
+            """)
             return
         
         # セッション状態初期化
         if 'season_management_state' not in st.session_state:
             st.session_state['season_management_state'] = {
                 'new_season_name': '',
+                'new_season_url': '',
                 'operation_in_progress': False,
                 'last_operation': None
             }
         
         # 新シーズン追加
         st.subheader("新シーズン追加")
+        
+        # 手順説明
+        with st.expander("作成手順"):
+            st.markdown("""
+            **事前準備**:
+            1. Google Sheetsで新しい空のスプレッドシートを作成
+            2. 共有設定で「リンクを知っている人が編集可能」に設定
+            3. 下記フォームにシーズン名とURLを入力
+            """)
         
         # 操作中の場合は入力を無効化
         disabled = st.session_state['season_management_state']['operation_in_progress']
@@ -144,7 +160,27 @@ def display_config_status(config_manager: ConfigManager):
             key="season_name_input"
         )
         
-        if st.button("シーズン追加", disabled=disabled or not new_season_name.strip(), key="add_season_button"):
+        new_season_url = st.text_input(
+            "スプレッドシートURL",
+            value=st.session_state['season_management_state']['new_season_url'],
+            placeholder="https://docs.google.com/spreadsheets/d/...",
+            disabled=disabled,
+            key="season_url_input"
+        )
+        
+        # URL検証
+        valid_url = False
+        if new_season_url.strip():
+            spreadsheet_id = config_manager.extract_spreadsheet_id(new_season_url.strip())
+            if spreadsheet_id:
+                st.success("有効なURL")
+                valid_url = True
+            else:
+                st.error("無効なURL")
+        
+        if st.button("シーズン追加", 
+                    disabled=disabled or not new_season_name.strip() or not valid_url, 
+                    key="add_season_button"):
             # 操作開始
             st.session_state['season_management_state']['operation_in_progress'] = True
             st.session_state['season_management_state']['last_operation'] = 'add'
@@ -158,12 +194,13 @@ def display_config_status(config_manager: ConfigManager):
                 st.session_state['season_management_state']['operation_in_progress'] = False
             else:
                 # シーズン作成実行
-                success = create_new_season_sync(config_manager, season_key, new_season_name.strip())
+                success = create_new_season_with_url(config_manager, season_key, new_season_name.strip(), new_season_url.strip())
                 
                 if success:
                     st.success(f"'{new_season_name.strip()}' を作成")
                     # 入力フィールドをクリア
                     st.session_state['season_management_state']['new_season_name'] = ''
+                    st.session_state['season_management_state']['new_season_url'] = ''
                     # セッション状態をクリアして最新の設定を反映
                     if 'current_season_key' in st.session_state:
                         del st.session_state['current_season_key']
@@ -224,23 +261,26 @@ def display_config_status(config_manager: ConfigManager):
             else:
                 st.info("シーズンなし")
 
-def create_new_season_sync(config_manager: ConfigManager, season_key: str, season_name: str) -> bool:
-    """新しいシーズンを同期的に作成"""
+def create_new_season_with_url(config_manager: ConfigManager, season_key: str, season_name: str, spreadsheet_url: str) -> bool:
+    """URLを指定して新しいシーズンを作成"""
     try:
         # プログレスバー表示
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        status_text.text("作成中...")
+        status_text.text("接続テスト中...")
         progress_bar.progress(25)
         
-        # シーズンを追加（シーズン名でスプレッドシート作成）
-        if config_manager.add_season(season_key, season_name, auto_create=True):
-            progress_bar.progress(100)
-            status_text.text("完了")
+        # シーズンを追加（URL指定方式）
+        if config_manager.add_season(season_key, season_name, spreadsheet_url):
+            progress_bar.progress(75)
+            status_text.text("設定保存中...")
             
             # 新しいシーズンのデータを初期化
             initialize_new_season_data()
+            
+            progress_bar.progress(100)
+            status_text.text("完了")
             
             # プログレスバーを削除
             progress_bar.empty()

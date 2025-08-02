@@ -1,11 +1,11 @@
-# config_manager.py - 設定スプレッドシート対応版
+# config_manager.py - URL指定方式対応版
 import json
 import os
 from typing import Dict, Optional, Union
 import streamlit as st
 
 class ConfigManager:
-    """設定ファイルを管理するクラス（設定スプレッドシート対応）"""
+    """設定ファイルを管理するクラス（URL指定方式対応）"""
     
     def __init__(self, config_file: str = "config.json"):
         self.config_file = config_file
@@ -217,8 +217,8 @@ class ConfigManager:
             # エラーが発生してもローカル設定は保存
             pass
     
-    def add_season(self, season_key: str, name: str, auto_create: bool = True) -> bool:
-        """新しいシーズンを追加（設定スプレッドシート対応）"""
+    def add_season(self, season_key: str, name: str, spreadsheet_url: str) -> bool:
+        """新しいシーズンを追加（URL指定方式）"""
         try:
             # 既存のシーズンキーをチェック
             existing_seasons = self.get_all_seasons()
@@ -226,14 +226,28 @@ class ConfigManager:
                 st.error(f"シーズンキー '{season_key}' は既に存在します")
                 return False
             
-            # スプレッドシートを作成
-            result = self._create_new_spreadsheet(name)
-            if result['success']:
-                spreadsheet_id = result['spreadsheet_id']
-                url = result['url']
-            else:
-                st.error(f"スプレッドシート作成に失敗: {result.get('error', '不明なエラー')}")
+            # スプレッドシートIDを抽出
+            spreadsheet_id = self.extract_spreadsheet_id(spreadsheet_url)
+            if not spreadsheet_id:
+                st.error("有効なGoogle SheetsのURLを入力してください")
                 return False
+            
+            # スプレッドシートの接続テストと初期化
+            sheets_creds = self.load_sheets_credentials()
+            if not sheets_creds:
+                st.error("Google Sheets認証情報が設定されていません")
+                return False
+            
+            from spreadsheet_manager import SpreadsheetManager
+            sheet_manager = SpreadsheetManager(sheets_creds)
+            
+            if not sheet_manager.connect(spreadsheet_id):
+                st.error("スプレッドシートに接続できません。URLとアクセス権限を確認してください")
+                return False
+            
+            # ヘッダーを初期化
+            if not sheet_manager.initialize_headers():
+                st.warning("ヘッダーの初期化に失敗しましたが、シーズンは作成されます")
             
             # シーズン情報を追加
             if "google_sheets" not in self.config:
@@ -244,7 +258,7 @@ class ConfigManager:
             self.config["google_sheets"]["seasons"][season_key] = {
                 "name": name,
                 "spreadsheet_id": spreadsheet_id,
-                "url": url,
+                "url": spreadsheet_url,
                 "created_at": self._get_current_timestamp()
             }
             
@@ -405,164 +419,6 @@ class ConfigManager:
         """現在のタイムスタンプを取得"""
         from datetime import datetime
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    def _create_new_spreadsheet(self, title: str) -> Dict:
-        """新しいスプレッドシートを自動作成（公開設定）"""
-        try:
-            from google.oauth2 import service_account
-            from googleapiclient.discovery import build
-            
-            # 認証情報を取得
-            creds_dict = self.load_sheets_credentials()
-            if not creds_dict:
-                return {
-                    'success': False,
-                    'error': "Google Sheets認証情報が見つかりません"
-                }
-            
-            # サービスアカウント認証
-            credentials = service_account.Credentials.from_service_account_info(
-                creds_dict,
-                scopes=[
-                    'https://www.googleapis.com/auth/spreadsheets',
-                    'https://www.googleapis.com/auth/drive'
-                ]
-            )
-            
-            # Google Sheets APIサービス
-            sheets_service = build('sheets', 'v4', credentials=credentials)
-            drive_service = build('drive', 'v3', credentials=credentials)
-            
-            # スプレッドシート作成
-            spreadsheet_body = {
-                'properties': {
-                    'title': title
-                },
-                'sheets': [{
-                    'properties': {
-                        'title': 'Sheet1'
-                    }
-                }]
-            }
-            
-            response = sheets_service.spreadsheets().create(body=spreadsheet_body).execute()
-            spreadsheet_id = response['spreadsheetId']
-            url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
-            
-            # スプレッドシートを公開設定にする
-            try:
-                permission = {
-                    'type': 'anyone',
-                    'role': 'writer'  # 編集可能
-                }
-                drive_service.permissions().create(
-                    fileId=spreadsheet_id,
-                    body=permission
-                ).execute()
-            except Exception as e:
-                st.warning(f"公開設定に失敗しましたが、スプレッドシートは作成されました: {e}")
-            
-            # ヘッダー行を追加
-            header_result = self._initialize_spreadsheet_headers(sheets_service, spreadsheet_id)
-            if not header_result['success']:
-                st.warning(f"ヘッダー初期化に問題がありました: {header_result.get('warning', '')}")
-            
-            return {
-                'success': True,
-                'spreadsheet_id': spreadsheet_id,
-                'url': url,
-                'message': f"新しいスプレッドシート '{title}' を作成しました（公開設定）"
-            }
-            
-        except ImportError:
-            return {
-                'success': False,
-                'error': "google-api-python-clientライブラリが必要です: pip install google-api-python-client"
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f"スプレッドシート作成エラー: {str(e)}"
-            }
-    
-    def _initialize_spreadsheet_headers(self, sheets_service, spreadsheet_id: str) -> Dict:
-        """スプレッドシートにヘッダー行を追加"""
-        try:
-            headers = [
-                "対戦日", "対戦時刻", "対戦タイプ",
-                "プレイヤー1名", "プレイヤー1点数",
-                "プレイヤー2名", "プレイヤー2点数", 
-                "プレイヤー3名", "プレイヤー3点数",
-                "プレイヤー4名", "プレイヤー4点数",
-                "メモ", "登録日時"
-            ]
-            
-            # ヘッダー行を追加
-            body = {
-                'values': [headers]
-            }
-            
-            sheets_service.spreadsheets().values().update(
-                spreadsheetId=spreadsheet_id,
-                range='A1:M1',
-                valueInputOption='RAW',
-                body=body
-            ).execute()
-            
-            # スプレッドシートの詳細情報を取得して正しいシートIDを取得
-            try:
-                spreadsheet = sheets_service.spreadsheets().get(
-                    spreadsheetId=spreadsheet_id
-                ).execute()
-                
-                # 最初のシートのIDを取得
-                sheet_id = spreadsheet['sheets'][0]['properties']['sheetId']
-                
-                # ヘッダー行のフォーマット設定
-                format_body = {
-                    'requests': [{
-                        'repeatCell': {
-                            'range': {
-                                'sheetId': sheet_id,
-                                'startRowIndex': 0,
-                                'endRowIndex': 1
-                            },
-                            'cell': {
-                                'userEnteredFormat': {
-                                    'backgroundColor': {
-                                        'red': 0.9,
-                                        'green': 0.9,
-                                        'blue': 0.9
-                                    },
-                                    'textFormat': {
-                                        'bold': True
-                                    }
-                                }
-                            },
-                            'fields': 'userEnteredFormat(backgroundColor,textFormat)'
-                        }
-                    }]
-                }
-                
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=spreadsheet_id,
-                    body=format_body
-                ).execute()
-                
-            except Exception as format_error:
-                # フォーマット設定に失敗してもヘッダーは追加されているので警告のみ
-                return {
-                    'success': True,
-                    'warning': f"ヘッダー追加は成功しましたが、フォーマット設定に失敗: {format_error}"
-                }
-            
-            return {'success': True}
-            
-        except Exception as e:
-            return {
-                'success': False,
-                'warning': f"ヘッダー初期化に失敗しましたが、スプレッドシートは作成されました: {e}"
-            }
     
     def get_config_status(self) -> Dict:
         """設定状況を確認"""

@@ -1,4 +1,4 @@
-# spreadsheet_manager.py - プレイヤー名一括更新機能完全版
+# spreadsheet_manager.py - ヘッダー初期化強化版
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import Dict, List, Tuple
@@ -43,31 +43,132 @@ class SpreadsheetManager:
             return False
     
     def initialize_headers(self) -> bool:
-        """ヘッダー行を初期化（初回のみ）"""
+        """ヘッダー行を初期化（既存データを保護）"""
         try:
             if not self.sheet:
                 return False
             
+            # 期待されるヘッダー
+            expected_headers = [
+                "対戦日", "対戦時刻", "対戦タイプ",
+                "プレイヤー1名", "プレイヤー1点数",
+                "プレイヤー2名", "プレイヤー2点数", 
+                "プレイヤー3名", "プレイヤー3点数",
+                "プレイヤー4名", "プレイヤー4点数",
+                "メモ", "登録日時"
+            ]
+            
             # 既存のヘッダーをチェック
-            existing_headers = self.sheet.row_values(1)
+            try:
+                existing_headers = self.sheet.row_values(1)
+            except Exception:
+                existing_headers = []
             
-            if not existing_headers:
-                # ヘッダー行を設定
-                headers = [
-                    "対戦日", "対戦時刻", "対戦タイプ",
-                    "プレイヤー1名", "プレイヤー1点数",
-                    "プレイヤー2名", "プレイヤー2点数", 
-                    "プレイヤー3名", "プレイヤー3点数",
-                    "プレイヤー4名", "プレイヤー4点数",
-                    "メモ", "登録日時"
-                ]
-                self.sheet.append_row(headers)
+            # ヘッダーが完全に一致している場合は何もしない
+            if existing_headers == expected_headers:
+                return True
+            
+            # ヘッダーが部分的に一致している場合は警告
+            if existing_headers and len(existing_headers) > 0:
+                # 既存データがある可能性があるため、慎重にチェック
+                if any(header in existing_headers for header in expected_headers):
+                    # 既存のヘッダーが部分的に一致する場合は上書きしない
+                    return True
+            
+            # 完全に空の場合、または既存ヘッダーが期待値と全く異なる場合のみ初期化
+            if not existing_headers or len(existing_headers) == 0:
+                self.sheet.append_row(expected_headers)
+                return True
+            else:
+                # 既存データを保護するため、ヘッダーの上書きは行わない
+                return True
                 
-            return True
-            
         except Exception as e:
             st.error(f"ヘッダー初期化エラー: {e}")
             return False
+    
+    def validate_sheet_structure(self) -> Dict:
+        """シートの構造を検証"""
+        try:
+            if not self.sheet:
+                return {'valid': False, 'error': 'シートに接続されていません'}
+            
+            headers = self.sheet.row_values(1)
+            
+            expected_headers = [
+                "対戦日", "対戦時刻", "対戦タイプ",
+                "プレイヤー1名", "プレイヤー1点数",
+                "プレイヤー2名", "プレイヤー2点数", 
+                "プレイヤー3名", "プレイヤー3点数",
+                "プレイヤー4名", "プレイヤー4点数",
+                "メモ", "登録日時"
+            ]
+            
+            if not headers:
+                return {'valid': False, 'error': 'ヘッダー行が見つかりません'}
+            
+            # 必要なヘッダーの存在チェック（順序は問わない）
+            missing_headers = []
+            for expected in expected_headers:
+                if expected not in headers:
+                    missing_headers.append(expected)
+            
+            if missing_headers:
+                return {
+                    'valid': False, 
+                    'error': f'不足しているヘッダー: {", ".join(missing_headers)}',
+                    'suggestion': 'スプレッドシートのヘッダーを手動で設定してください'
+                }
+            
+            return {
+                'valid': True,
+                'headers': headers,
+                'row_count': len(self.sheet.get_all_values()) - 1,  # ヘッダー行を除く
+                'message': 'シート構造は正常です'
+            }
+            
+        except Exception as e:
+            return {'valid': False, 'error': f'検証エラー: {e}'}
+    
+    def setup_sheet_for_mahjong(self) -> Dict:
+        """麻雀記録用にシートをセットアップ"""
+        try:
+            if not self.sheet:
+                return {'success': False, 'error': 'シートに接続されていません'}
+            
+            # 現在の構造を検証
+            validation = self.validate_sheet_structure()
+            
+            if validation['valid']:
+                return {'success': True, 'message': '既にセットアップ済み'}
+            
+            # ヘッダーを設定
+            headers = [
+                "対戦日", "対戦時刻", "対戦タイプ",
+                "プレイヤー1名", "プレイヤー1点数",
+                "プレイヤー2名", "プレイヤー2点数", 
+                "プレイヤー3名", "プレイヤー3点数",
+                "プレイヤー4名", "プレイヤー4点数",
+                "メモ", "登録日時"
+            ]
+            
+            # 既存データをチェック
+            all_values = self.sheet.get_all_values()
+            
+            if not all_values or len(all_values) == 0:
+                # 完全に空のシートの場合
+                self.sheet.append_row(headers)
+                return {'success': True, 'message': 'ヘッダーを設定しました'}
+            else:
+                # 既存データがある場合は手動設定を促す
+                return {
+                    'success': False, 
+                    'error': '既存データが検出されました',
+                    'suggestion': f'手動でヘッダー行に以下を設定してください: {", ".join(headers)}'
+                }
+                
+        except Exception as e:
+            return {'success': False, 'error': f'セットアップエラー: {e}'}
     
     def add_record(self, game_data: Dict) -> bool:
         """対戦記録を追加"""
@@ -75,8 +176,12 @@ class SpreadsheetManager:
             if not self.sheet:
                 return False
             
-            # ヘッダーが存在しない場合は初期化
-            self.initialize_headers()
+            # シート構造を検証
+            validation = self.validate_sheet_structure()
+            if not validation['valid']:
+                st.warning(f"シート構造に問題があります: {validation['error']}")
+                if 'suggestion' in validation:
+                    st.info(validation['suggestion'])
             
             # 記録データを行として追加
             row_data = [
@@ -255,46 +360,6 @@ class SpreadsheetManager:
         except Exception as e:
             st.error(f"プレイヤー統計取得エラー: {e}")
             return {}
-    
-    def validate_sheet_structure(self) -> Dict:
-        """シートの構造を検証"""
-        try:
-            if not self.sheet:
-                return {'valid': False, 'error': 'シートに接続されていません'}
-            
-            headers = self.sheet.row_values(1)
-            
-            expected_headers = [
-                "対戦日", "対戦時刻", "対戦タイプ",
-                "プレイヤー1名", "プレイヤー1点数",
-                "プレイヤー2名", "プレイヤー2点数", 
-                "プレイヤー3名", "プレイヤー3点数",
-                "プレイヤー4名", "プレイヤー4点数",
-                "メモ", "登録日時"
-            ]
-            
-            if not headers:
-                return {'valid': False, 'error': 'ヘッダー行が見つかりません'}
-            
-            missing_headers = []
-            for expected in expected_headers:
-                if expected not in headers:
-                    missing_headers.append(expected)
-            
-            if missing_headers:
-                return {
-                    'valid': False, 
-                    'error': f'不足しているヘッダー: {", ".join(missing_headers)}'
-                }
-            
-            return {
-                'valid': True,
-                'headers': headers,
-                'row_count': len(self.sheet.get_all_values()) - 1  # ヘッダー行を除く
-            }
-            
-        except Exception as e:
-            return {'valid': False, 'error': f'検証エラー: {e}'}
     
     def update_cell(self, row: int, col: int, value) -> bool:
         """指定されたセルを更新"""
