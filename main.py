@@ -1,4 +1,4 @@
-# main.py - プレイヤーマスタ管理完全対応版
+# main.py - player_master管理完全対応版
 import streamlit as st
 from ui_components import setup_sidebar
 from tab_pages import home_tab, screenshot_upload_tab, manual_input_tab, player_management_tab
@@ -108,7 +108,7 @@ st.markdown("""
 def main():
     st.title("麻雀点数管理システム")
     
-    # 設定とプレイヤーマスタの同期初期化
+    # 設定とplayer_masterの同期初期化
     initialize_config_and_players()
     
     # サイドバー設定
@@ -133,7 +133,7 @@ def main():
         player_management_tab()
 
 def initialize_config_and_players():
-    """設定とプレイヤーマスタを初期化"""
+    """設定とplayer_masterを初期化"""
     if 'config_initialized' not in st.session_state:
         from config_manager import ConfigManager
         
@@ -141,7 +141,7 @@ def initialize_config_and_players():
             # 設定スプレッドシートからの同期を強制実行
             config_manager = ConfigManager()
             
-            # プレイヤーマスタを先に読み込み
+            # player_masterを先に読み込み
             load_master_players(config_manager)
             
             # 設定同期後、現在のシーズンのデータも読み込み
@@ -168,7 +168,7 @@ def initialize_config_and_players():
                 st.session_state['game_records'] = []
 
 def load_master_players(config_manager=None):
-    """プレイヤーマスタを設定スプレッドシートから読み込み"""
+    """player_masterを設定スプレッドシートから読み込み"""
     try:
         # 既にセッション状態にある場合は、強制リロードフラグをチェック
         if ('master_players' in st.session_state and 
@@ -202,7 +202,7 @@ def load_master_players(config_manager=None):
         st.session_state['master_players'] = []
 
 def force_reload_players():
-    """プレイヤーマスタの強制リロード"""
+    """player_masterの強制リロード"""
     st.session_state['force_reload_players'] = True
     load_master_players()
 
@@ -264,7 +264,7 @@ def load_data_from_sheets_with_config_sync():
 def refresh_all_data():
     """全データの手動リフレッシュ"""
     try:
-        # プレイヤーマスタを強制リロード
+        # player_masterを強制リロード
         force_reload_players()
         
         # 対戦データを再読み込み
@@ -295,7 +295,7 @@ def get_app_status():
         config_manager = ConfigManager()
         config_status = config_manager.get_config_status()
         
-        # プレイヤーマスタの状態
+        # player_masterの状態
         master_players_count = len(st.session_state.get('master_players', []))
         
         # 対戦記録の状態

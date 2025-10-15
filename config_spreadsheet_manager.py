@@ -1,4 +1,4 @@
-# config_spreadsheet_manager.py - プレイヤーマスタ管理機能完全版
+# config_spreadsheet_manager.py - player_master管理機能完全版
 import gspread
 from google.oauth2.service_account import Credentials
 from typing import Dict, List, Optional
@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 
 class ConfigSpreadsheetManager:
-    """設定用スプレッドシート管理クラス（プレイヤーマスタ対応）"""
+    """設定用スプレッドシート管理クラス（player_master対応）"""
     
     def __init__(self, credentials_dict: Dict = None):
         self.credentials_dict = credentials_dict
@@ -45,12 +45,12 @@ class ConfigSpreadsheetManager:
             # シーズン設定シート（既存）
             self.config_sheet = spreadsheet.sheet1
             
-            # プレイヤーマスタシートを取得または作成
+            # player_masterシートを取得または作成
             try:
-                self.player_sheet = spreadsheet.worksheet('プレイヤーマスタ')
+                self.player_sheet = spreadsheet.worksheet('player_master')
             except gspread.WorksheetNotFound:
-                # プレイヤーマスタシートが存在しない場合は作成
-                self.player_sheet = spreadsheet.add_worksheet(title='プレイヤーマスタ', rows=1000, cols=5)
+                # player_masterシートが存在しない場合は作成
+                self.player_sheet = spreadsheet.add_worksheet(title='player_master', rows=1000, cols=5)
                 self._initialize_player_sheet()
             
             # 初回アクセス時にヘッダーを設定
@@ -90,7 +90,7 @@ class ConfigSpreadsheetManager:
             return False
     
     def _initialize_player_sheet(self) -> bool:
-        """プレイヤーマスタシートのヘッダーを初期化"""
+        """player_masterシートのヘッダーを初期化"""
         try:
             headers = [
                 "user_id",           # ユーザーID（サービスアカウントのemail）

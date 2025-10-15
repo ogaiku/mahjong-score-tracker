@@ -1,4 +1,4 @@
-# input_forms.py - プレイヤーマスタ管理完全対応版
+# input_forms.py - player_master管理完全対応版
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
