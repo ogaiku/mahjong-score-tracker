@@ -576,14 +576,37 @@ canvas {
   font-size: 0.875rem;
 }
 
-.footer a {
+.footer-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-sm);
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.footer-link {
   color: var(--primary-color);
   text-decoration: none;
   font-weight: 500;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
 }
 
-.footer a:hover {
-  text-decoration: underline;
+.footer-link:hover {
+  background-color: var(--bg-tertiary);
+  text-decoration: none;
+}
+
+.separator {
+  color: var(--border-color);
 }
 
 .last-updated {

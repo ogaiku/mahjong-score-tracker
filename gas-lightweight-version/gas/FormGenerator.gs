@@ -323,26 +323,113 @@ function onFormSubmit(e) {
 
 /**
  * プレイヤーリストを更新（定期実行推奨）
+ * フォームIDを指定して実行してください
  */
-function updatePlayerListInForm() {
+function updatePlayerListInForm(formId) {
   try {
     const players = getAllPlayers();
     const playerNames = players.map(p => p.name);
     
-    // フォームを取得（フォームIDを指定）
-    // const formId = 'YOUR_FORM_ID';
-    // const form = FormApp.openById(formId);
+    if (playerNames.length === 0) {
+      Logger.log('⚠️ プレイヤーマスターが空です');
+      return;
+    }
+    
+    // フォームを取得
+    const form = FormApp.openById(formId);
+    
+    let updatedCount = 0;
     
     // プレイヤー選択項目を更新
-    // form.getItems().forEach(item => {
-    //   if (item.getType() === FormApp.ItemType.LIST) {
-    //     item.asListItem().setChoiceValues(playerNames);
-    //   }
-    // });
+    form.getItems().forEach(item => {
+      if (item.getType() === FormApp.ItemType.LIST) {
+        const listItem = item.asListItem();
+        const title = listItem.getTitle();
+        
+        // プレイヤー名の選択項目のみ更新
+        if (title.includes('プレイヤー') && title.includes('名')) {
+          listItem.setChoiceValues(playerNames);
+          updatedCount++;
+          Logger.log(`✅ 更新: ${title}`);
+        }
+      }
+    });
     
-    Logger.log('✅ プレイヤーリストを更新しました');
+    Logger.log(`✅ プレイヤーリストを更新しました（${updatedCount}項目、${playerNames.length}人）`);
+    return updatedCount;
+    
   } catch (error) {
     Logger.log('❌ プレイヤーリスト更新エラー: ' + error.toString());
+    throw error;
+  }
+}
+
+/**
+ * 対戦記録フォームのプレイヤーリストを更新
+ * フォームIDは createMahjongGameForm() の実行ログから取得
+ */
+function updateGameFormPlayerList() {
+  // TODO: フォーム作成時に取得したフォームIDを設定
+  const gameFormId = 'YOUR_GAME_FORM_ID';
+  
+  if (gameFormId === 'YOUR_GAME_FORM_ID') {
+    Logger.log('⚠️ フォームIDを設定してください');
+    Logger.log('フォームIDは createMahjongGameForm() の実行ログから取得できます');
+    return;
+  }
+  
+  return updatePlayerListInForm(gameFormId);
+}
+
+/**
+ * プレイヤー管理フォーム送信時の処理
+ * プレイヤー追加・変更後に自動的にフォームを更新
+ */
+function onPlayerFormSubmit(e) {
+  try {
+    const itemResponses = e.response.getItemResponses();
+    
+    // 操作タイプを取得
+    let operation = '';
+    let playerName = '';
+    let oldName = '';
+    let newName = '';
+    
+    itemResponses.forEach(itemResponse => {
+      const title = itemResponse.getItem().getTitle();
+      const response = itemResponse.getResponse();
+      
+      if (title === '操作') {
+        operation = response;
+      } else if (title.includes('プレイヤー名（追加時）')) {
+        playerName = response;
+      } else if (title.includes('変更対象プレイヤー')) {
+        oldName = response;
+      } else if (title.includes('新しいプレイヤー名')) {
+        newName = response;
+      }
+    });
+    
+    // player_masterに反映（Code.gsの関数を使用）
+    if (operation === 'プレイヤーを追加' && playerName) {
+      // プレイヤー追加処理
+      Logger.log(`プレイヤー追加リクエスト: ${playerName}`);
+      // TODO: player_masterへの追加処理を実装
+      
+    } else if (operation === 'プレイヤー名を変更' && oldName && newName) {
+      // プレイヤー名変更処理
+      Logger.log(`プレイヤー名変更リクエスト: ${oldName} → ${newName}`);
+      // TODO: player_masterの更新処理を実装
+    }
+    
+    // フォームのプレイヤーリストを自動更新
+    // TODO: 対戦記録フォームIDを設定して有効化
+    // updateGameFormPlayerList();
+    
+    Logger.log('✅ プレイヤー管理フォーム処理完了');
+    
+  } catch (error) {
+    Logger.log('❌ プレイヤー管理フォーム処理エラー: ' + error.toString());
   }
 }
 
@@ -361,10 +448,63 @@ function createAllForms() {
   Logger.log('=== フォーム一括作成完了 ===');
   Logger.log('');
   Logger.log('📋 対戦記録フォーム: ' + gameForm.formUrl);
+  Logger.log('  フォームID: ' + gameForm.formId);
   Logger.log('👥 プレイヤー管理フォーム: ' + playerForm.formUrl);
+  Logger.log('  フォームID: ' + playerForm.formId);
+  Logger.log('');
+  Logger.log('🔧 次のステップ:');
+  Logger.log('1. updateGameFormPlayerList() 関数内のフォームIDを更新');
+  Logger.log('2. プレイヤー追加時に自動更新するよう設定');
+  
+  // スクリプトプロパティに保存
+  saveFormIds(gameForm.formId, playerForm.formId);
   
   return {
     gameForm: gameForm,
     playerForm: playerForm
   };
+}
+
+/**
+ * フォームIDをスクリプトプロパティに保存
+ */
+function saveFormIds(gameFormId, playerFormId) {
+  try {
+    const scriptProperties = PropertiesService.getScriptProperties();
+    scriptProperties.setProperty('GAME_FORM_ID', gameFormId);
+    scriptProperties.setProperty('PLAYER_FORM_ID', playerFormId);
+    Logger.log('✅ フォームIDを保存しました');
+  } catch (error) {
+    Logger.log('⚠️ フォームID保存エラー: ' + error.toString());
+  }
+}
+
+/**
+ * 保存されたフォームIDを取得
+ */
+function getFormIds() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  return {
+    gameFormId: scriptProperties.getProperty('GAME_FORM_ID'),
+    playerFormId: scriptProperties.getProperty('PLAYER_FORM_ID')
+  };
+}
+
+/**
+ * 対戦記録フォームのプレイヤーリストを更新（改善版）
+ */
+function updateGameFormPlayerListAuto() {
+  try {
+    const formIds = getFormIds();
+    
+    if (!formIds.gameFormId) {
+      Logger.log('⚠️ フォームIDが見つかりません。createAllForms()を実行してください。');
+      return;
+    }
+    
+    return updatePlayerListInForm(formIds.gameFormId);
+  } catch (error) {
+    Logger.log('❌ 自動更新エラー: ' + error.toString());
+    throw error;
+  }
 }

@@ -761,6 +761,14 @@ function addPlayer(data) {
     
     sheet.appendRow(rowData);
     
+    // フォームのプレイヤーリストを自動更新
+    try {
+      updateGameFormPlayerListAuto();
+    } catch (updateError) {
+      Logger.log('⚠️ フォーム更新エラー: ' + updateError.toString());
+      // フォーム更新に失敗してもプレイヤー追加は成功とする
+    }
+    
     return ContentService
       .createTextOutput(JSON.stringify({ 
         success: true, 
@@ -791,6 +799,13 @@ function deletePlayer(data) {
     for (let i = 1; i < existingData.length; i++) {
       if (existingData[i][1] === data.playerName) {
         sheet.deleteRow(i + 1);
+        
+        // フォームのプレイヤーリストを自動更新
+        try {
+          updateGameFormPlayerListAuto();
+        } catch (updateError) {
+          Logger.log('⚠️ フォーム更新エラー: ' + updateError.toString());
+        }
         
         return ContentService
           .createTextOutput(JSON.stringify({ 
@@ -831,6 +846,13 @@ function updatePlayer(data) {
       if (existingData[i][1] === data.oldName) {
         sheet.getRange(i + 1, 2).setValue(data.newName);
         sheet.getRange(i + 1, 4).setValue(new Date().toLocaleString('ja-JP'));
+        
+        // フォームのプレイヤーリストを自動更新
+        try {
+          updateGameFormPlayerListAuto();
+        } catch (updateError) {
+          Logger.log('⚠️ フォーム更新エラー: ' + updateError.toString());
+        }
         
         return ContentService
           .createTextOutput(JSON.stringify({ 

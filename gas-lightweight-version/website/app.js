@@ -100,7 +100,13 @@ function setupEventListeners() {
   });
   
   // フォームリンク
-  document.getElementById('form-link').href = APP_CONFIG.GAME_FORM_URL;
+  document.getElementById('game-form-link').href = APP_CONFIG.GAME_FORM_URL;
+  document.getElementById('player-form-link').href = APP_CONFIG.PLAYER_FORM_URL;
+  
+  // 対戦記録入力ボタン
+  document.getElementById('add-game-btn').addEventListener('click', () => {
+    window.open(APP_CONFIG.GAME_FORM_URL, '_blank');
+  });
 }
 
 // ========================================
